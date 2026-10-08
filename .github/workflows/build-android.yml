@@ -80,6 +80,7 @@ jobs:
       # validation run actually exercises the path this branch is adding. Manual
       # dispatch can still select either preset explicitly. On pull_request events
       # github.head_ref is the source branch; on push events github.ref_name is.
+      PRESET: ${{ inputs.preset || ((github.head_ref || github.ref_name) == 'feature/android-armv7' && 'android-vulkan-armv7' || 'android-vulkan') }}
       ANDROID_ABI: ${{ (inputs.preset || ((github.head_ref || github.ref_name) == 'feature/android-armv7' && 'android-vulkan-armv7' || 'android-vulkan')) == 'android-vulkan-armv7' && 'armeabi-v7a' || 'arm64-v8a' }}
       # Pinned exact NDK release (not "latest") so a cross-compile that works
       # today doesn't silently pick up a different toolchain in six months.

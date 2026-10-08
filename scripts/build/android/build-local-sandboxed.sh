@@ -137,9 +137,14 @@ mkdir -p "build/${PRESET}/_deps"
 rm -rf "build/${PRESET}/_deps/sdl3-src"
 ln -sfn "${FETCHCONTENT_SRC}/SDL3-src" "build/${PRESET}/_deps/sdl3-src"
 
-echo "=== [7/8] Build z_generals + DXVK d3d8/d3d9 + hooks ==="
-cmake --build "build/${PRESET}" --target z_generals dxvk_d3d8_install \
-  main_hook file_redirect_hook gsl_alloc_hook hook_impl -- -k 0 2>&1 | tee logs/build_android.log
+echo "=== [7/8] Build z_generals + DXVK d3d8/d3d9 (ABI ${ANDROID_ABI}) ==="
+BUILD_TARGETS=(z_generals dxvk_d3d8_install)
+# libadrenotools and its hook targets are Arm64-only; the ARMv7 path deliberately
+# excludes them and uses the system Vulkan/GLES driver instead.
+if [ "${ANDROID_ABI}" = "arm64-v8a" ]; then
+  BUILD_TARGETS+=(main_hook file_redirect_hook gsl_alloc_hook hook_impl)
+fi
+cmake --build "build/${PRESET}" --target "${BUILD_TARGETS[@]}" -- -k 0 2>&1 | tee logs/build_android.log
 ccache --show-stats
 
 echo "=== [8/8] Verify, strip, package APK ==="

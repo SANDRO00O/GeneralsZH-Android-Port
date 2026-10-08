@@ -112,15 +112,19 @@ declare -a RUNTIME_LIB_CANDIDATES=(
     "libSDL3_image.so:_deps/sdl3_image-build/libSDL3_image.so"
     "libopenal.so:_deps/openal_soft-build/libopenal.so"
     "libgamespy.so:libgamespy.so"
-    # GeneralsX @bugfix Android port 10/07/2026 libadrenotools' own
-    # CMakeLists.txt (cmake/adrenotools.cmake) doesn't pin STATIC/SHARED, so
-    # it follows this project's BUILD_SHARED_LIBS -- which resolves to ON
-    # here (via the vcpkg-chainloaded NDK toolchain), making it an actual
-    # DT_NEEDED shared library of libmain.so, not just a statically-linked
-    # archive. CI's "Verify APK contains every library" step caught this
-    # missing on the first real build.
-    "libadrenotools.so:_deps/adrenotools-build/libadrenotools.so"
 )
+if [[ "${ANDROID_ABI}" == "arm64-v8a" ]]; then
+    RUNTIME_LIB_CANDIDATES+=(
+        # GeneralsX @bugfix Android port 10/07/2026 libadrenotools' own
+        # CMakeLists.txt (cmake/adrenotools.cmake) doesn't pin STATIC/SHARED, so
+        # it follows this project's BUILD_SHARED_LIBS -- which resolves to ON
+        # here (via the vcpkg-chainloaded NDK toolchain), making it an actual
+        # DT_NEEDED shared library of libmain.so, not just a statically-linked
+        # archive. CI's "Verify APK contains every library" step caught this
+        # missing on the first real build.
+        "libadrenotools.so:_deps/adrenotools-build/libadrenotools.so"
+    )
+fi
 for entry in "${RUNTIME_LIB_CANDIDATES[@]}"; do
     name="${entry%%:*}"
     primary_rel="${entry#*:}"
@@ -142,20 +146,22 @@ done
 # nativeLibraryDir (i.e. this jniLibs directory). Package them unconditionally
 # so the feature works the first time someone imports a driver, without
 # needing a rebuild.
-declare -a ADRENOTOOLS_HOOK_LIBS=(
-    "libmain_hook.so"
-    "libfile_redirect_hook.so"
-    "libgsl_alloc_hook.so"
-    "libhook_impl.so"
-)
-for name in "${ADRENOTOOLS_HOOK_LIBS[@]}"; do
-    src="$(find "${BUILD_DIR}" -maxdepth 6 -name "${name}" 2>/dev/null | head -1)"
-    if [[ -z "${src}" || ! -f "${src}" ]]; then
-        echo "ERROR: ${name} not found anywhere under ${BUILD_DIR} — required by the Custom Vulkan Driver feature (cmake/adrenotools.cmake)."
-        exit 1
-    fi
-    cp "${src}" "${JNILIBS}/"
-done
+if [[ "${ANDROID_ABI}" == "arm64-v8a" ]]; then
+    declare -a ADRENOTOOLS_HOOK_LIBS=(
+        "libmain_hook.so"
+        "libfile_redirect_hook.so"
+        "libgsl_alloc_hook.so"
+        "libhook_impl.so"
+    )
+    for name in "${ADRENOTOOLS_HOOK_LIBS[@]}"; do
+        src="$(find "${BUILD_DIR}" -maxdepth 6 -name "${name}" 2>/dev/null | head -1)"
+        if [[ -z "${src}" || ! -f "${src}" ]]; then
+            echo "ERROR: ${name} not found anywhere under ${BUILD_DIR} — required by the Custom Vulkan Driver feature (cmake/adrenotools.cmake)."
+            exit 1
+        fi
+        cp "${src}" "${JNILIBS}/"
+    done
+fi
 
 # libc++_shared.so from the NDK (ANDROID_STL=c++_shared)
 if [[ -z "${ANDROID_NDK_HOME:-}" ]]; then

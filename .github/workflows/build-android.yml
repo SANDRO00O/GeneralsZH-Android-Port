@@ -48,6 +48,7 @@ on:
         description: "CMake preset for Android"
         options:
           - android-vulkan
+          - android-vulkan-armv7
         default: android-vulkan
       version_name:
         type: string
@@ -73,6 +74,7 @@ jobs:
     timeout-minutes: 120
     env:
       PRESET: ${{ inputs.preset || 'android-vulkan' }}
+      ANDROID_ABI: ${{ (inputs.preset || 'android-vulkan') == 'android-vulkan-armv7' && 'armeabi-v7a' || 'arm64-v8a' }}
       # Pinned exact NDK release (not "latest") so a cross-compile that works
       # today doesn't silently pick up a different toolchain in six months.
       NDK_VERSION: "27.2.12479018"
@@ -231,9 +233,9 @@ jobs:
           path: |
             /opt/vcpkg
             ~/.cache/vcpkg
-          key: vcpkg-android-${{ runner.os }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-lock.json', 'cmake/triplets/arm64-android.cmake') }}
+          key: vcpkg-android-${{ runner.os }}-${{ env.ANDROID_ABI }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-lock.json', 'cmake/triplets/arm64-android.cmake', 'cmake/triplets/armv7-android.cmake') }}
           restore-keys: |
-            vcpkg-android-${{ runner.os }}-${{ env.VCPKG_COMMIT }}-
+            vcpkg-android-${{ runner.os }}-${{ env.ANDROID_ABI }}-${{ env.VCPKG_COMMIT }}-
 
       # Gradle's own dependency/build cache is handled by gradle/actions/setup-gradle above.
 
@@ -252,7 +254,7 @@ jobs:
           # stale cache kept being "valid" and kept breaking every run.
           # Tying the key to the repo name means a future rename invalidates
           # this cache instead of silently corrupting it again.
-          key: dxvk-android-${{ runner.os }}-${{ github.repository }}-${{ env.DXVK_REF }}-${{ hashFiles('Patches/dxvk-android.patch', 'Patches/dxvk-ios.patch', 'cmake/dx8.cmake', 'cmake/meson-arm64-android-cross.ini.in') }}
+          key: dxvk-android-${{ runner.os }}-${{ github.repository }}-${{ env.ANDROID_ABI }}-${{ env.DXVK_REF }}-${{ hashFiles('Patches/dxvk-android.patch', 'Patches/dxvk-ios.patch', 'cmake/dx8.cmake', 'cmake/meson-arm64-android-cross.ini.in', 'cmake/meson-armv7-android-cross.ini.in') }}
 
       - name: Bootstrap vcpkg
         run: |
@@ -334,21 +336,22 @@ jobs:
           # to a process started microseconds later. Retry a few times with
           # a short sleep before failing for real; a genuinely wrong-arch
           # binary will still fail every attempt and correctly error out.
+          if [ "${ANDROID_ABI}" = "armeabi-v7a" ]; then EXPECTED_ELF_MACHINE="ARM"; else EXPECTED_ELF_MACHINE="AArch64"; fi
           READELF_OK=0
           for attempt in 1 2 3 4 5; do
-            if "$READELF" -h "$GAME_LIB" 2>/dev/null | grep -q AArch64; then
+            if "$READELF" -h "$GAME_LIB" 2>/dev/null | grep -q "Machine:[[:space:]]*${EXPECTED_ELF_MACHINE}"; then
               READELF_OK=1
               break
             fi
             sleep 1
           done
-          [ "$READELF_OK" = "1" ] || { echo "::error::libmain.so is not AArch64"; exit 1; }
+          [ "$READELF_OK" = "1" ] || { echo "::error::libmain.so is not ${EXPECTED_ELF_MACHINE} (${ANDROID_ABI})"; exit 1; }
           for lib in libdxvk_d3d8.so libdxvk_d3d9.so; do
             [ -f "build/${{ env.PRESET }}/$lib" ] || { echo "::error::$lib missing"; exit 1; }
           done
           strings "build/${{ env.PRESET }}/libdxvk_d3d9.so" | grep -q Sdl3WsiDriver || {
             echo "::error::libdxvk_d3d9.so built without the SDL3 WSI (silent fallback)"; exit 1; }
-          echo "Artifacts verified: AArch64 libmain.so + DXVK with SDL3 WSI"
+          echo "Artifacts verified: ${EXPECTED_ELF_MACHINE} libmain.so + DXVK with SDL3 WSI (${ANDROID_ABI})"
 
       # GeneralsX @feature Android CI 06/09/2026 The strip step below is what
       # keeps the APK at ~42MB instead of ~118MB, but it also destroys the one
@@ -432,7 +435,7 @@ jobs:
           # Gradle falls back to whatever is committed in build.gradle.
           echo "version_code=${{ inputs.version_code || '' }}" >> "$GITHUB_OUTPUT"
           echo "version_name=${{ inputs.version_name || '' }}" >> "$GITHUB_OUTPUT"
-          echo "apk_name=GeneralsXZH-android-run${{ github.run_number }}.apk" >> "$GITHUB_OUTPUT"
+          echo "apk_name=GeneralsXZH-android-${{ env.ANDROID_ABI }}-run${{ github.run_number }}.apk" >> "$GITHUB_OUTPUT"
 
       - name: Package APK
         env:
@@ -444,6 +447,7 @@ jobs:
           # by hand (in build.gradle or via a manual-dispatch override) since
           # the last build the user actually installed.
           GX_ANDROID_STAGING: ${{ github.workspace }}/android-staging
+          GX_ANDROID_ABI: ${{ env.ANDROID_ABI }}
           GX_ANDROID_VERSION_CODE: ${{ steps.artifact.outputs.version_code }}
           GX_ANDROID_VERSION_NAME: ${{ steps.artifact.outputs.version_name }}
         run: |
@@ -463,17 +467,17 @@ jobs:
       # package-android-zh.sh only warned, and nothing checked the actual APK
       # contents against what libmain.so declares it needs. Do that here:
       # every non-system DT_NEEDED of libmain.so must be a real file inside
-      # the APK's lib/arm64-v8a/, or the build is not actually shippable.
+      # the APK's selected ABI directory, or the build is not actually shippable.
       - name: Verify APK contains every library libmain.so needs
         run: |
           set -euo pipefail
           READELF="$(ls "${ANDROID_NDK_HOME}"/toolchains/llvm/prebuilt/*/bin/llvm-readelf | head -1)"
           APK="${{ steps.locate.outputs.path }}"
           WORKDIR="$(mktemp -d)"
-          unzip -q "${APK}" 'lib/arm64-v8a/*' -d "${WORKDIR}"
-          echo "Packaged libraries:"
-          ls "${WORKDIR}/lib/arm64-v8a/"
-          NEEDED="$("${READELF}" -d "${WORKDIR}/lib/arm64-v8a/libmain.so" | grep NEEDED | sed -E 's/.*\[(.*)\]/\1/')"
+          unzip -q "${APK}" "lib/${ANDROID_ABI}/*" -d "${WORKDIR}"
+          echo "Packaged libraries (${ANDROID_ABI}):"
+          ls "${WORKDIR}/lib/${ANDROID_ABI}/"
+          NEEDED="$("${READELF}" -d "${WORKDIR}/lib/${ANDROID_ABI}/libmain.so" | grep NEEDED | sed -E 's/.*\[(.*)\]/\1/')"
           missing=0
           for lib in ${NEEDED}; do
             case "${lib}" in
@@ -482,7 +486,7 @@ jobs:
                              # #11 caught libmediandk.so, pulled in by FFmpeg's MediaCodec
                              # backend, missing from this allowlist — see docs/port/ANDROID_PORT.md)
             esac
-            if [ ! -f "${WORKDIR}/lib/arm64-v8a/${lib}" ]; then
+            if [ ! -f "${WORKDIR}/lib/${ANDROID_ABI}/${lib}" ]; then
               echo "::error::libmain.so needs '${lib}' at runtime but it is not packaged in the APK"
               missing=1
             fi

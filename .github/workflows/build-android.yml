@@ -215,7 +215,7 @@ jobs:
         run: |
           set -euo pipefail
           ccache --set-config=max_size=3G
-          # Cross-compiles (host clang, target arm64-android via NDK sysroot)
+          # Cross-compiles (host clang, target Android ARM via the NDK sysroot)
           # confuse ccache's default mtime-based direct mode across different
           # checkouts; content hashing keeps hits reliable and is barely
           # slower once warm.
@@ -639,7 +639,7 @@ jobs:
           path: |
             /opt/vcpkg
             ~/.cache/vcpkg
-          key: vcpkg-android-${{ runner.os }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-lock.json', 'cmake/triplets/arm64-android.cmake') }}
+          key: vcpkg-android-${{ runner.os }}-${{ env.ANDROID_ABI }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-lock.json', 'cmake/triplets/arm64-android.cmake', 'cmake/triplets/armv7-android.cmake') }}
 
       - name: Save DXVK build cache
         if: always() && steps.cache-dxvk.outputs.cache-hit != 'true'
@@ -656,7 +656,7 @@ jobs:
           # stale cache kept being "valid" and kept breaking every run.
           # Tying the key to the repo name means a future rename invalidates
           # this cache instead of silently corrupting it again.
-          key: dxvk-android-${{ runner.os }}-${{ github.repository }}-${{ env.DXVK_REF }}-${{ hashFiles('Patches/dxvk-android.patch', 'Patches/dxvk-ios.patch', 'cmake/dx8.cmake', 'cmake/meson-arm64-android-cross.ini.in') }}
+          key: dxvk-android-${{ runner.os }}-${{ github.repository }}-${{ env.ANDROID_ABI }}-${{ env.DXVK_REF }}-${{ hashFiles('Patches/dxvk-android.patch', 'Patches/dxvk-ios.patch', 'cmake/dx8.cmake', 'cmake/meson-arm64-android-cross.ini.in', 'cmake/meson-armv7-android-cross.ini.in') }}
 
       # Always re-save under this run's unique key (the restore-keys prefix
       # match above means later runs pick up the freshest available cache);

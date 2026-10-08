@@ -23,7 +23,7 @@
 # file is absent and TryLoadCustomVulkanDriver() is a no-op on phones that
 # don't need it (non-Adreno GPUs, or Adreno with a stock driver that
 # already handles 1.3).
-if(ANDROID)
+if(ANDROID AND NOT ANDROID_ABI STREQUAL "armeabi-v7a")
     set(GEN_INSTALL_TARGET OFF CACHE BOOL "" FORCE)
     FetchContent_Declare(
         adrenotools
@@ -32,5 +32,5 @@ if(ANDROID)
         GIT_SUBMODULES_RECURSE TRUE
     )
     FetchContent_MakeAvailable(adrenotools)
-    message(STATUS "libadrenotools: custom Vulkan driver loading (Adreno/Turnip) enabled")
+    message(STATUS "libadrenotools: custom Vulkan driver loading (Adreno/Turnip) enabled for ${ANDROID_ABI}")
 endif()

@@ -378,8 +378,10 @@ public class SetupActivity extends Activity {
                 // touch DXVK at all, see
                 // Core/Libraries/Source/d3d8gles/CMakeLists.txt.
                 if (RENDER_BACKEND_VULKAN.equals(getRenderBackendChoice())) {
-                    applyRecommendedDriverIfNeeded();
-                    buildCustomDriverSection(page);
+                    if (supportsCustomVulkanDriver()) {
+                        applyRecommendedDriverIfNeeded();
+                        buildCustomDriverSection(page);
+                    }
                     buildDxvkConfigSection(page);
                 }
                 break;
@@ -1489,6 +1491,13 @@ public class SetupActivity extends Activity {
 
     private TextView customDriverStatusView;
 
+    // libadrenotools currently supports Android Arm64 only. Keep its
+    // importer/recommended-driver UI out of 32-bit ARM builds instead of
+    // letting users install a driver that the native process cannot load.
+    private boolean supportsCustomVulkanDriver() {
+        return android.os.Process.is64Bit();
+    }
+
     private void buildCustomDriverSection(LinearLayout root) {
         LinearLayout content = UiKit.card(root);
         UiKit.sectionHeader(content, R.drawable.ic_gzh_chip,
@@ -1523,6 +1532,9 @@ public class SetupActivity extends Activity {
     // onClearCustomDriver() so "reset" actually restores the recommended
     // state instead of just going blank.
     private void applyRecommendedDriverIfNeeded() {
+        if (!supportsCustomVulkanDriver()) {
+            return;
+        }
         try {
             if (new File(getFilesDir(), CUSTOM_DRIVER_CFG_NAME).isFile()) {
                 return;  // already configured (auto or user) -- leave it alone

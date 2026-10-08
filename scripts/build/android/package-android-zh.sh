@@ -15,7 +15,9 @@
 # /storage/emulated/0/Android/data/com.generalsx.zerohour/files/ (see
 # docs/port/ANDROID_PORT.md).
 #
-# Usage: ./scripts/build/android/package-android-zh.sh [--install]
+# Usage:
+#   ./scripts/build/android/package-android-zh.sh [--install]
+#   GX_ANDROID_ABI=armeabi-v7a ./scripts/build/android/package-android-zh.sh
 #   --install  adb install the APK to the first connected device
 set -euo pipefail
 
@@ -29,9 +31,24 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-BUILD_DIR="${PROJECT_ROOT}/build/android-vulkan"
 ANDROID_DIR="${PROJECT_ROOT}/android"
-JNILIBS="${ANDROID_DIR}/app/src/main/jniLibs/arm64-v8a"
+
+ANDROID_ABI="${GX_ANDROID_ABI:-arm64-v8a}"
+case "${ANDROID_ABI}" in
+    arm64-v8a)
+        PRESET="android-vulkan"
+        ;;
+    armeabi-v7a)
+        PRESET="android-vulkan-armv7"
+        ;;
+    *)
+        echo "ERROR: unsupported GX_ANDROID_ABI='${ANDROID_ABI}' (expected arm64-v8a or armeabi-v7a)."
+        exit 1
+        ;;
+esac
+
+BUILD_DIR="${PROJECT_ROOT}/build/${PRESET}"
+JNILIBS="${ANDROID_DIR}/app/src/main/jniLibs/${ANDROID_ABI}"
 JAVA_SDL="${ANDROID_DIR}/app/src/main/java-sdl"
 ASSETS="${ANDROID_DIR}/app/src/main/assets/gamedata"
 DEFAULT_DRIVER_ASSETS="${ANDROID_DIR}/app/src/main/assets/default_driver"
@@ -145,7 +162,11 @@ if [[ -z "${ANDROID_NDK_HOME:-}" ]]; then
     echo "ERROR: ANDROID_NDK_HOME must be set (for libc++_shared.so)."
     exit 1
 fi
-LIBCXX="$(ls "${ANDROID_NDK_HOME}"/toolchains/llvm/prebuilt/*/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so 2>/dev/null | head -1)"
+case "${ANDROID_ABI}" in
+    arm64-v8a) LIBCXX_TRIPLE="aarch64-linux-android" ;;
+    armeabi-v7a) LIBCXX_TRIPLE="arm-linux-androideabi" ;;
+esac
+LIBCXX="$(ls "${ANDROID_NDK_HOME}"/toolchains/llvm/prebuilt/*/sysroot/usr/lib/"${LIBCXX_TRIPLE}"/libc++_shared.so 2>/dev/null | head -1)"
 if [[ -z "${LIBCXX}" ]]; then
     echo "ERROR: libc++_shared.so not found in the NDK sysroot."
     exit 1
@@ -156,15 +177,12 @@ cp "${LIBCXX}" "${JNILIBS}/"
 # (Vulkan backend) so the GLES rendering path (d3d8gles) can route its EGL
 # context and gl* calls through ANGLE's Vulkan translation instead of the
 # device's own GLES driver (see gles_dispatch.cpp / SDL3Main.cpp's
-# GENERALSX_GLES_ANGLE toggle). Committed as prebuilt binaries, not rebuilt
-# here: this ANGLE checkout is a Vulkan-only Android arm64 build from the
-# AOSP mirror (android.googlesource.com/platform/external/angle), built with
-# a hand-bootstrapped gn+ninja toolchain instead of the official
-# depot_tools/gclient workflow (100GB+ disk, unavailable in this sandbox) --
-# not a build this script can reasonably reproduce on every run. Not
-# required for the game to run: d3d8gles falls back to the system's
-# libGLESv3.so at runtime if either file is missing or fails to dlopen.
-ANGLE_PREBUILT="${PROJECT_ROOT}/Core/Libraries/Source/d3d8gles/angle-prebuilt/arm64-v8a"
+# GENERALSX_GLES_ANGLE toggle). ANGLE is ABI-specific: ARM64 uses the
+# committed arm64-v8a prebuilts; ARMv7 will use a separately built
+# armeabi-v7a directory when one exists. It is not required for the game
+# to run: d3d8gles falls back to the system's libGLESv3.so if either file
+# is missing or fails to dlopen.
+ANGLE_PREBUILT="${PROJECT_ROOT}/Core/Libraries/Source/d3d8gles/angle-prebuilt/${ANDROID_ABI}"
 if [[ -f "${ANGLE_PREBUILT}/libEGL_angle.so" && -f "${ANGLE_PREBUILT}/libGLESv2_angle.so" ]]; then
     cp "${ANGLE_PREBUILT}/libEGL_angle.so" "${ANGLE_PREBUILT}/libGLESv2_angle.so" "${JNILIBS}/"
 else
@@ -281,13 +299,21 @@ fi
 # their own driver; a no-op everywhere else, including all non-Adreno GPUs.
 # Lives in its own top-level assets/ folder (not gamedata/): it's extracted
 # to app-private internal storage, not the user's external game-data folder.
-if [[ ! -f "${STAGING}/default_driver/meta.json" ]]; then
+if [[ "${ANDROID_ABI}" == "armeabi-v7a" ]]; then
+    # The currently pinned Turnip fetcher validates and stages an AArch64 driver.
+    # Do not put a 64-bit Vulkan driver into an ARMv7 APK. Custom user-supplied
+    # drivers remain supported through the in-app importer.
+    rm -rf "${DEFAULT_DRIVER_ASSETS}"
+    echo "==> ARMv7: skipping bundled Turnip fallback (current fetcher is AArch64-only)"
+else
+    if [[ ! -f "${STAGING}/default_driver/meta.json" ]]; then
     echo "==> Default Vulkan driver not staged yet; fetching Turnip"
     GX_DEFAULT_DRIVER="${STAGING}/default_driver" "${PROJECT_ROOT}/scripts/build/android/fetch-turnip.sh"
 fi
 rm -rf "${DEFAULT_DRIVER_ASSETS}"
 mkdir -p "${DEFAULT_DRIVER_ASSETS}"
 cp -R "${STAGING}/default_driver/." "${DEFAULT_DRIVER_ASSETS}/"
+fi
 
 # GeneralsX @note Android port 11/07/2026 the GeneralsOnline lobby screens
 # (WOLWelcomeMenu.wnd, WOLCustomLobby.wnd, WOLQuickMatchMenu.wnd,
@@ -340,8 +366,9 @@ if [[ -n "${GX_ANDROID_VERSION_NAME:-}" ]]; then
     GRADLE_VERSION_ARG="${GRADLE_VERSION_ARG} -PandroidVersionName=${GX_ANDROID_VERSION_NAME}"
 fi
 
-echo "==> ${GRADLE_CMD} assembleDebug ${GRADLE_VERSION_ARG}"
-"${GRADLE_CMD}" assembleDebug ${GRADLE_VERSION_ARG}
+GRADLE_ABI_ARG="-PandroidAbi=${ANDROID_ABI}"
+echo "==> ${GRADLE_CMD} assembleDebug ${GRADLE_VERSION_ARG} ${GRADLE_ABI_ARG}"
+"${GRADLE_CMD}" assembleDebug ${GRADLE_VERSION_ARG} ${GRADLE_ABI_ARG}
 
 APK="${ANDROID_DIR}/app/build/outputs/apk/debug/app-debug.apk"
 if [[ ! -f "${APK}" ]]; then

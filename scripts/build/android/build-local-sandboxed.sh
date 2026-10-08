@@ -14,7 +14,21 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO"
 
-PRESET=android-vulkan
+ANDROID_ABI="${GX_ANDROID_ABI:-arm64-v8a}"
+case "${ANDROID_ABI}" in
+  arm64-v8a)
+    PRESET=android-vulkan
+    EXPECTED_ELF_MACHINE="AArch64"
+    ;;
+  armeabi-v7a)
+    PRESET=android-vulkan-armv7
+    EXPECTED_ELF_MACHINE="ARM"
+    ;;
+  *)
+    echo "ERROR: unsupported GX_ANDROID_ABI='${ANDROID_ABI}' (expected arm64-v8a or armeabi-v7a)"
+    exit 1
+    ;;
+esac
 NDK_VERSION="27.2.12479018"
 CMDLINE_TOOLS_VERSION="13114758"
 CMDLINE_TOOLS_SHA1="5fdcc763663eefb86a5b8879697aa6088b041e70"
@@ -133,7 +147,7 @@ READELF="$(ls "${ANDROID_NDK_HOME}"/toolchains/llvm/prebuilt/*/bin/llvm-readelf 
 GAME_LIB="build/${PRESET}/GeneralsMD/Code/Main/libmain.so"
 [ -f "$GAME_LIB" ] || { echo "libmain.so not found at $GAME_LIB"; exit 1; }
 readelf_out="$("$READELF" -h "$GAME_LIB")"
-grep -q AArch64 <<< "$readelf_out" || { echo "libmain.so is not AArch64"; exit 1; }
+grep -q "Machine:[[:space:]]*${EXPECTED_ELF_MACHINE}" <<< "$readelf_out" || { echo "libmain.so is not ${EXPECTED_ELF_MACHINE}"; exit 1; }
 for lib in libdxvk_d3d8.so libdxvk_d3d9.so; do
   [ -f "build/${PRESET}/$lib" ] || { echo "$lib missing"; exit 1; }
 done
@@ -147,7 +161,7 @@ done
 # found.
 dxvk_strings="$(strings "build/${PRESET}/libdxvk_d3d9.so")"
 grep -q "SDL3 WSI:" <<< "$dxvk_strings" || { echo "libdxvk_d3d9.so built without SDL3 WSI"; exit 1; }
-echo "Artifacts verified: AArch64 libmain.so + DXVK with SDL3 WSI"
+echo "Artifacts verified: ${EXPECTED_ELF_MACHINE} libmain.so + DXVK with SDL3 WSI (${ANDROID_ABI})"
 
 # Strip debug symbols from everything except the two DXVK libraries before
 # packaging: android/app/build.gradle deliberately keeps libdxvk_d3d8/d3d9.so

@@ -198,6 +198,7 @@ for lib in "$GAME_LIB" \
 done
 
 export GX_ANDROID_STAGING="${REPO}/android-staging"
+export GX_ANDROID_ABI="${ANDROID_ABI}"
 # GeneralsX @feature Android port 01/08/2026 Respect a caller-provided
 # override instead of always clearing it -- lets a one-off diagnostic build
 # force a distinct versionCode/versionName so a tester can be certain a

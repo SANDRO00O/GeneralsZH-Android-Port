@@ -63,9 +63,9 @@ compiled under a shared `SAGE_MOBILE_PLATFORM` guard
 
 | File | Purpose |
 |---|---|
-| `CMakePresets.json` | `android-vulkan` preset: vcpkg + chainloaded NDK toolchain, arm64-v8a, API 28, `SAGE_DXVK_USE_LOCAL_FORK=ON` |
-| `cmake/triplets/arm64-android.cmake` | overlay triplet pinning API level for vcpkg-built deps |
-| `cmake/meson-arm64-android-cross.ini.in` | DXVK meson cross file (NDK clang, static libc++ into the DXVK libs) |
+| `CMakePresets.json` | `android-vulkan` (arm64-v8a) and `android-vulkan-armv7` (armeabi-v7a): vcpkg + chainloaded NDK toolchain, API 28, `SAGE_DXVK_USE_LOCAL_FORK=ON` |
+| `cmake/triplets/arm64-android.cmake` / `cmake/triplets/armv7-android.cmake` | ABI-specific overlay triplets pinning API level for vcpkg-built deps |
+| `cmake/meson-arm64-android-cross.ini.in` / `cmake/meson-armv7-android-cross.ini.in` | ABI-specific DXVK meson cross files (NDK clang, static libc++ into the DXVK libs) |
 | `cmake/dx8.cmake` | `elseif(ANDROID)` branch: builds DXVK d3d8/d3d9 from the local fork with meson; same sdl3.pc trick as macOS (silent-SDL2-WSI trap); artifact copy to build root |
 | `Patches/dxvk-android.patch` | unversioned `.so` names — APKs can't carry `libdxvk_d3d9.so.0.20600` + symlinks; verified to apply cleanly together with `dxvk-ios.patch` (whose WSI pixel-size fix Android also wants) |
 | `cmake/sdl3.cmake` | Android: no system libpng (stb decodes PNG), no TIF/WEBP backends |
@@ -76,7 +76,7 @@ compiled under a shared `SAGE_MOBILE_PLATFORM` guard
 | `GeneralsMD/.../SDL3GameEngine.cpp` | touch gesture state machine + lifecycle render gate, generalized to `SAGE_MOBILE_PLATFORM` |
 | `GeneralsMD/.../SDL3Device/GameClient/TouchInput.{h,cpp}` | what a gesture *means*, resolved against the engine's own rules with no synthesized pointer — see §2a |
 | `android/` | Gradle shell: `GeneralsZHActivity extends SDLActivity`, asset extraction, missing-game-data dialog, placeholder adaptive icon |
-| `scripts/build/android/{build,package}-android-zh.sh` | build + verify artifacts (AArch64, `Sdl3WsiDriver` compiled in), stage jniLibs/Java/assets, gradle assemble |
+| `scripts/build/android/{build,package}-android-zh.sh` | ABI-selectable build + verification (`arm64-v8a` or `armeabi-v7a`, `Sdl3WsiDriver` compiled in), stage jniLibs/Java/assets, gradle assemble |
 | `vcpkg.json` | fontconfig excluded on android; ffmpeg enabled for android |
 
 `dx8wrapper.cpp` needed **no change**: its existing Linux branch dlopens

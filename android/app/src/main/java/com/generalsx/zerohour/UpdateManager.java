@@ -71,6 +71,22 @@ final class UpdateManager {
 
     static final String[] ENGINE_LIBS = { "libmain.so", "libmain60.so" };
 
+    /** ABI of the native process this APK was built to run in. */
+    static String nativeAbi() {
+        return android.os.Process.is64Bit() ? "arm64-v8a" : "armeabi-v7a";
+    }
+
+    /**
+     * Engine updates are ABI-specific. Older ARM64 manifests did not carry an ABI field, so
+     * those remain valid for ARM64 for backward compatibility; a 32-bit process always requires
+     * an explicit armeabi-v7a engine to avoid ever dlopen()ing an AArch64 engine.
+     */
+    private static boolean engineMatchesAbi(JSONObject engine) {
+        String publishedAbi = engine.optString("abi", "");
+        String installedAbi = nativeAbi();
+        return installedAbi.equals(publishedAbi)
+            || (installedAbi.equals("arm64-v8a") && publishedAbi.isEmpty());
+    }
     private static final String PREFS = "gx_update";
     private static final String KEY_SERIAL = "serial";
     private static final String KEY_AUTO = "auto_check";
@@ -471,6 +487,12 @@ final class UpdateManager {
     }
 
     private static void applyEngine(Context ctx, JSONObject engine, Result r) throws Exception {
+        if (!engineMatchesAbi(engine)) {
+            r.engineIncompatible = true;
+            Log.i(TAG, "ignoring engine update built for ABI " + engine.optString("abi", "<unspecified>")
+                + " on " + nativeAbi());
+            return;
+        }
         int seq = engine.optInt("seq", 0);
         r.engineSeq = seq;
         if (seq <= bundledEngineSeq(ctx) || seq == readInt(badEngineMarker(ctx))) {
@@ -533,7 +555,7 @@ final class UpdateManager {
         try {
             File manifestFile = new File(updateDir(ctx), "manifest.json");
             JSONObject engine = new JSONObject(readText(manifestFile)).optJSONObject("engine");
-            if (engine == null || engine.optInt("seq", 0) != seq) {
+            if (engine == null || engine.optInt("seq", 0) != seq || !engineMatchesAbi(engine)) {
                 return false;
             }
             JSONObject requires = engine.optJSONObject("requires_libs");

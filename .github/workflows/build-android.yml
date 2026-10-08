@@ -76,7 +76,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      # The ARMv7 feature branch/PR defaults to the ARMv7 preset so an automatic
+      # The ARMv7 feature branch/PR defaults to the ARMv7 preset so an automatic [trigger probe]
       # validation run actually exercises the path this branch is adding. Manual
       # dispatch can still select either preset explicitly. On pull_request events
       # github.head_ref is the source branch; on push events github.ref_name is.

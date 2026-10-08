@@ -198,14 +198,14 @@ camera-mode change.
 ### Option A — GitHub Actions (no local NDK/toolchain needed)
 
 `.github/workflows/build-android.yml` builds the whole stack on a GitHub-hosted
-runner and uploads a ready-to-sideload APK as a workflow artifact:
-vcpkg deps → DXVK d3d8/d3d9 → `libmain.so` → Gradle `assembleDebug`, with the
-same artifact verification (`Sdl3WsiDriver` compiled in, AArch64 ELF) the local
-build script does.
+runner and uploads a ready-to-sideload APK as a workflow artifact. The manual
+workflow supports both `android-vulkan` (`arm64-v8a`) and
+`android-vulkan-armv7` (`armeabi-v7a`), and verifies the selected ELF
+architecture plus the APK's DT_NEEDED libraries before publishing the artifact.
 
 Trigger it from the **Actions** tab → *Build Android* → *Run workflow*, or just
 push to `main`/`claude/**` touching engine or `android/` files. Download the
-`GeneralsXZH-android-<run>.apk` artifact from the run summary and `adb install`
+`GeneralsXZH-android-<abi>-run<run>.apk` artifact from the run summary and `adb install`
 it (or transfer + tap-install on the phone).
 
 **Every CI build is signed with the same committed debug key**
@@ -236,15 +236,19 @@ export VCPKG_ROOT=~/vcpkg
 export ANDROID_NDK_HOME=~/Android/Sdk/ndk/<version>
 # meson + ninja + pkg-config via pip/brew/apt
 
-# Build native code (game -> libmain.so, DXVK -> libdxvk_d3d8/9.so) and verify
+# ARM64 (default)
 ./scripts/build/android/build-android-zh.sh
-
-# Stage everything into the Gradle shell and produce the APK
 ./scripts/build/android/package-android-zh.sh --install
+
+# ARMv7 / armeabi-v7a
+GX_ANDROID_ABI=armeabi-v7a ./scripts/build/android/build-android-zh.sh
+GX_ANDROID_ABI=armeabi-v7a ./scripts/build/android/package-android-zh.sh --install
 ```
 
 The first configure builds vcpkg deps (ffmpeg, curl+openssl, freetype…) for
-`arm64-android` — expect 30–60 minutes cold.
+the selected ABI; the v7a path uses the dedicated `armv7-android` triplet.
+The bundled Turnip fallback remains disabled on v7a until a verified 32-bit
+driver is available, and missing ARMv7 ANGLE prebuilts use the system GLES fallback.
 
 ## 4. Game data and first run — the in-app Setup flow (no adb, no PC needed)
 

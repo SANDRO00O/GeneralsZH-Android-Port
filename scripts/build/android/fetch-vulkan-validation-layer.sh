@@ -26,8 +26,25 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 
 if [[ -f "${DEST}/libVkLayer_khronos_validation.so" ]]; then
-    echo "Vulkan validation layer already staged at ${DEST}"
-    exit 0
+    if command -v file >/dev/null 2>&1; then
+        EXISTING_ARCH="$(file -b "${DEST}/libVkLayer_khronos_validation.so")"
+        if [[ "${ANDROID_ABI}" == "arm64-v8a" ]]; then
+            [[ "${EXISTING_ARCH}" == *"ARM aarch64"* || "${EXISTING_ARCH}" == *"AArch64"* ]] && {
+                echo "Vulkan validation layer already staged at ${DEST}"
+                exit 0
+            }
+        else
+            [[ "${EXISTING_ARCH}" == *"ARM"* && "${EXISTING_ARCH}" != *"aarch64"* && "${EXISTING_ARCH}" != *"AArch64"* ]] && {
+                echo "Vulkan validation layer already staged at ${DEST}"
+                exit 0
+            }
+        fi
+        echo "==> Existing validation layer ABI mismatch; replacing it for ${ANDROID_ABI}"
+        rm -f "${DEST}/libVkLayer_khronos_validation.so"
+    else
+        echo "WARNING: cannot verify cached validation layer ABI without file; replacing it"
+        rm -f "${DEST}/libVkLayer_khronos_validation.so"
+    fi
 fi
 
 echo "==> Downloading Vulkan Validation Layers ${VVL_VERSION} (Android binaries)"

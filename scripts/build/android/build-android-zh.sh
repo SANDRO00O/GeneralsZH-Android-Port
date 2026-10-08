@@ -108,8 +108,11 @@ echo "==> Building z_generals (libmain.so) + DXVK d3d8/d3d9 for ${ANDROID_ABI}"
 # another because of it. One touch is cheaper than that ambiguity.
 touch "${PROJECT_ROOT}/GeneralsMD/Code/Main/AndroidCrashHandler.cpp"
 
-cmake --build "${BUILD_DIR}" --target z_generals dxvk_d3d8_install \
-    main_hook file_redirect_hook gsl_alloc_hook hook_impl
+BUILD_TARGETS=(z_generals dxvk_d3d8_install)
+if [[ "${ANDROID_ABI}" == "arm64-v8a" ]]; then
+    BUILD_TARGETS+=(main_hook file_redirect_hook gsl_alloc_hook hook_impl)
+fi
+cmake --build "${BUILD_DIR}" --target "${BUILD_TARGETS[@]}"
 
 # --- artifact verification ---------------------------------------------------
 # Silent fallbacks all exit 0; check what actually got built.

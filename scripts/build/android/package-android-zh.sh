@@ -204,6 +204,31 @@ else
     echo "WARNING: Vulkan validation layer not available -- dxvk_validation.txt will have no effect in this build."
 fi
 
+# Verify that every native library staged for this APK matches the selected ABI.
+# This also covers prebuilt ANGLE/VVL libraries, not only the CMake outputs.
+if [[ -z "${ANDROID_NDK_HOME:-}" ]]; then
+    echo "ERROR: ANDROID_NDK_HOME must be set for ELF architecture verification."
+    exit 1
+fi
+READELF="$(ls "${ANDROID_NDK_HOME}"/toolchains/llvm/prebuilt/*/bin/llvm-readelf 2>/dev/null | head -1)"
+[[ -n "${READELF}" ]] || { echo "ERROR: llvm-readelf not found in the NDK."; exit 1; }
+
+case "${ANDROID_ABI}" in
+    arm64-v8a) EXPECTED_ELF_MACHINE="AArch64" ;;
+    armeabi-v7a) EXPECTED_ELF_MACHINE="ARM" ;;
+esac
+
+while IFS= read -r -d '' so_file; do
+    header="$("${READELF}" -h "${so_file}")"
+    if ! grep -q "Machine:[[:space:]]*${EXPECTED_ELF_MACHINE}" <<< "${header}"; then
+        echo "ERROR: wrong ELF architecture for ${ANDROID_ABI}: ${so_file}"
+        echo "${header}" | grep "Class\|Machine" || true
+        exit 1
+    fi
+done < <(find "${JNILIBS}" -maxdepth 1 -type f -name '*.so' -print0)
+
+echo "==> All staged .so files verified as ${EXPECTED_ELF_MACHINE} (${ANDROID_ABI})"
+
 echo "==> Staged $(ls "${JNILIBS}" | wc -l | tr -d ' ') native libraries:"
 ls -la "${JNILIBS}"
 

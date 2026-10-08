@@ -49,10 +49,6 @@ if command -v file >/dev/null 2>&1; then
         ARCH_OK="${ARCH}"
         [[ "${ARCH_OK}" == *"ARM"* && "${ARCH_OK}" != *"aarch64"* && "${ARCH_OK}" != *"AArch64"* ]] || { echo "ERROR: validation layer is not 32-bit ARM (got: ${ARCH})"; exit 1; }
     fi
-    if false; then
-        echo "UNREACHABLE"
-        exit 1
-    fi
 fi
 
 mkdir -p "${DEST}"

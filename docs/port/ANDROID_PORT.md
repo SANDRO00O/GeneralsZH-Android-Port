@@ -247,8 +247,9 @@ GX_ANDROID_ABI=armeabi-v7a ./scripts/build/android/package-android-zh.sh --insta
 
 The first configure builds vcpkg deps (ffmpeg, curl+openssl, freetype…) for
 the selected ABI; the v7a path uses the dedicated `armv7-android` triplet.
-The bundled Turnip fallback remains disabled on v7a until a verified 32-bit
-driver is available, and missing ARMv7 ANGLE prebuilts use the system GLES fallback.
+The bundled Turnip/adrenotools fallback remains disabled on v7a because the
+upstream driver-loader currently supports Android Arm64 only; missing ARMv7
+ANGLE prebuilts use the system GLES fallback.
 
 ## 4. Game data and first run — the in-app Setup flow (no adb, no PC needed)
 

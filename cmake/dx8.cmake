@@ -682,7 +682,14 @@ elseif(ANDROID)
   else()
     set(ANDROID_API "28")
   endif()
-  message(STATUS "Building DXVK ${DXVK_VERSION} for Android arm64-v8a (API ${ANDROID_API}) with Meson (${MESON_EXECUTABLE})")
+  if(ANDROID_ABI STREQUAL "armeabi-v7a")
+    set(DXVK_MESON_CROSS_TEMPLATE "${CMAKE_SOURCE_DIR}/cmake/meson-armv7-android-cross.ini.in")
+    set(DXVK_ANDROID_CPU_LABEL "armeabi-v7a")
+  else()
+    set(DXVK_MESON_CROSS_TEMPLATE "${CMAKE_SOURCE_DIR}/cmake/meson-arm64-android-cross.ini.in")
+    set(DXVK_ANDROID_CPU_LABEL "arm64-v8a")
+  endif()
+  message(STATUS "Building DXVK ${DXVK_VERSION} for Android ${DXVK_ANDROID_CPU_LABEL} (API ${ANDROID_API}) with Meson (${MESON_EXECUTABLE})")
 
   # Generate a pkg-config file for the in-tree (FetchContent) SDL3 so meson's
   # dependency('SDL3') resolves to it — the exact same silent-SDL2-fallback trap
@@ -712,9 +719,9 @@ Cflags: -I\${includedir}
   # pkg_config_libdir property from the cross file.
   set(DXVK_PKG_CONFIG_ENV "PKG_CONFIG_LIBDIR=${DXVK_SDL3_PC_DIR}")
 
-  configure_file(${CMAKE_SOURCE_DIR}/cmake/meson-arm64-android-cross.ini.in
-                 ${CMAKE_BINARY_DIR}/meson-arm64-android-cross.ini @ONLY)
-  set(DXVK_MESON_MACHINE_ARGS --cross-file ${CMAKE_BINARY_DIR}/meson-arm64-android-cross.ini)
+  configure_file(${DXVK_MESON_CROSS_TEMPLATE}
+                 ${CMAKE_BINARY_DIR}/meson-android-cross.ini @ONLY)
+  set(DXVK_MESON_MACHINE_ARGS --cross-file ${CMAKE_BINARY_DIR}/meson-android-cross.ini)
 
   ExternalProject_Add(dxvk_android_build
     SOURCE_DIR        ${DXVK_SOURCE_DIR}

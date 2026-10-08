@@ -56,7 +56,7 @@ endif()
 # itself since TryLoadCustomVulkanDriver() in SDL3Main.cpp must call
 # adrenotools_open_libvulkan() before DXVK's separately-built .so gets a
 # chance to dlopen the stock libvulkan.so on its own.
-if(ANDROID)
+if(ANDROID AND NOT ANDROID_ABI STREQUAL "armeabi-v7a")
     target_link_libraries(z_generals PRIVATE adrenotools)
 endif()
 

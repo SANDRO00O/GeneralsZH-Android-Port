@@ -113,7 +113,7 @@ def main():
                 sys.exit("APK must contain exactly one supported native ABI (arm64-v8a or armeabi-v7a)")
             abi = abi_paths[0]
             libs = {os.path.basename(n): n for n in z.namelist()
-                    if n.startswith("lib/arm64-v8a/") and n.endswith(".so")}
+                    if n.startswith("lib/%s/" % abi) and n.endswith(".so")}
             engine = {"seq": seq, "abi": abi, "files": {}, "requires_libs": {}}
             for name, path in sorted(libs.items()):
                 data = z.read(path)

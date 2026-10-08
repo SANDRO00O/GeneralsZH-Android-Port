@@ -19,12 +19,17 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-STASH="${REPO}/build/libmain60.so"
+ANDROID_ABI="${GX_ANDROID_ABI:-arm64-v8a}"
+case "${ANDROID_ABI}" in
+  arm64-v8a|armeabi-v7a) ;;
+  *) echo "ERROR: unsupported GX_ANDROID_ABI='${ANDROID_ABI}'"; exit 1 ;;
+esac
+STASH="${REPO}/build/${ANDROID_ABI}/libmain60.so"
 
 echo "=== pass 1 of 2: 60 Hz engine ==="
 GX_EXTRA_CMAKE="-DSAGE_HIGH_FPS_SIM=ON" "${SCRIPT_DIR}/build-local-sandboxed.sh"
 
-BUILT="${REPO}/build/android-vulkan/GeneralsMD/Code/Main/libmain.so"
+BUILT="${REPO}/build/$([ "${ANDROID_ABI}" = "armeabi-v7a" ] && echo android-vulkan-armv7 || echo android-vulkan)/GeneralsMD/Code/Main/libmain.so"
 [ -f "${BUILT}" ] || { echo "60 Hz libmain.so missing at ${BUILT}"; exit 1; }
 mkdir -p "$(dirname "${STASH}")"
 cp "${BUILT}" "${STASH}"

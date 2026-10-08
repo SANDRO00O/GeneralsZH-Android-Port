@@ -54,7 +54,7 @@
 #include <filesystem>
 #include <string>
 #endif
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) && defined(__aarch64__)
 // GeneralsX @feature Android port 10/07/2026 Optional custom Vulkan driver
 // loading (Adreno/Turnip), see TryLoadCustomVulkanDriver() below.
 #include <jni.h>

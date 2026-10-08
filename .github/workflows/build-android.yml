@@ -72,12 +72,15 @@ on:
 
 jobs:
   build-android:
-    name: apk@${{ inputs.preset || 'android-vulkan' }}
+    name: apk@${{ inputs.preset || (github.head_ref == 'feature/android-armv7' && 'android-vulkan-armv7' || 'android-vulkan') }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      PRESET: ${{ inputs.preset || 'android-vulkan' }}
-      ANDROID_ABI: ${{ (inputs.preset || 'android-vulkan') == 'android-vulkan-armv7' && 'armeabi-v7a' || 'arm64-v8a' }}
+      # The ARMv7 feature branch/PR defaults to the ARMv7 preset so an automatic
+      # validation run actually exercises the path this branch is adding. Manual
+      # dispatch can still select either preset explicitly.
+      PRESET: ${{ inputs.preset || (github.head_ref == 'feature/android-armv7' && 'android-vulkan-armv7' || 'android-vulkan') }}
+      ANDROID_ABI: ${{ (inputs.preset || (github.head_ref == 'feature/android-armv7' && 'android-vulkan-armv7' || 'android-vulkan')) == 'android-vulkan-armv7' && 'armeabi-v7a' || 'arm64-v8a' }}
       # Pinned exact NDK release (not "latest") so a cross-compile that works
       # today doesn't silently pick up a different toolchain in six months.
       NDK_VERSION: "27.2.12479018"

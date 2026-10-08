@@ -1144,7 +1144,7 @@ int main(int argc, char* argv[])
 		}
 		FilterPipeWireOpenAL();
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) && defined(__aarch64__)
 		if (useVulkan) {
 			// Must run before SDL_Vulkan_LoadLibrary()/DXVK's own internal
 			// dlopen("libvulkan.so") below -- see TryLoadCustomVulkanDriver().

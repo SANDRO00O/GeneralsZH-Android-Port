@@ -25,11 +25,17 @@ case "${ANDROID_ABI}" in
   *) echo "ERROR: unsupported GX_ANDROID_ABI='${ANDROID_ABI}'"; exit 1 ;;
 esac
 STASH="${REPO}/build/${ANDROID_ABI}/libmain60.so"
+export GX_ANDROID_ABI="${ANDROID_ABI}"
 
 echo "=== pass 1 of 2: 60 Hz engine ==="
 GX_EXTRA_CMAKE="-DSAGE_HIGH_FPS_SIM=ON" "${SCRIPT_DIR}/build-local-sandboxed.sh"
 
-BUILT="${REPO}/build/$([ "${ANDROID_ABI}" = "armeabi-v7a" ] && echo android-vulkan-armv7 || echo android-vulkan)/GeneralsMD/Code/Main/libmain.so"
+if [ "${ANDROID_ABI}" = "armeabi-v7a" ]; then
+  PRESET="android-vulkan-armv7"
+else
+  PRESET="android-vulkan"
+fi
+BUILT="${REPO}/build/${PRESET}/GeneralsMD/Code/Main/libmain.so"
 [ -f "${BUILT}" ] || { echo "60 Hz libmain.so missing at ${BUILT}"; exit 1; }
 mkdir -p "$(dirname "${STASH}")"
 cp "${BUILT}" "${STASH}"

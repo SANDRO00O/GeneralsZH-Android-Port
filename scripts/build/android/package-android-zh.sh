@@ -202,6 +202,7 @@ fi
 VVL_STAGED="${STAGING}/vulkan_validation/${ANDROID_ABI}/libVkLayer_khronos_validation.so"
 if [[ ! -f "${VVL_STAGED}" ]]; then
     echo "==> Vulkan validation layer not staged yet; fetching"
+    GX_ANDROID_ABI="${ANDROID_ABI}" \
     GX_VULKAN_VALIDATION="${STAGING}/vulkan_validation/${ANDROID_ABI}" \
         "${PROJECT_ROOT}/scripts/build/android/fetch-vulkan-validation-layer.sh" || true
 fi

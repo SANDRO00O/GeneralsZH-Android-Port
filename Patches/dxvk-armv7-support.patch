@@ -12,7 +12,7 @@ diff --git a/src/util/util_bit.h b/src/util/util_bit.h
 diff --git a/src/util/sync/sync_spinlock.h b/src/util/sync/sync_spinlock.h
 --- a/src/util/sync/sync_spinlock.h
 +++ b/src/util/sync/sync_spinlock.h
-@@ -24,6 +24,8 @@
+@@ -24,7 +24,9 @@
          #if defined(DXVK_ARCH_X86)
          _mm_pause();
          #elif defined(DXVK_ARCH_ARM64)

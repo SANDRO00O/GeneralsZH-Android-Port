@@ -68,7 +68,7 @@ compiled under a shared `SAGE_MOBILE_PLATFORM` guard
 | `cmake/meson-arm64-android-cross.ini.in` / `cmake/meson-armv7-android-cross.ini.in` | ABI-specific DXVK meson cross files (NDK clang, static libc++ into the DXVK libs) |
 | `cmake/dx8.cmake` | `elseif(ANDROID)` branch: builds DXVK d3d8/d3d9 from the local fork with meson; same sdl3.pc trick as macOS (silent-SDL2-WSI trap); artifact copy to build root |
 | `Patches/dxvk-android.patch` | unversioned `.so` names — APKs can't carry `libdxvk_d3d9.so.0.20600` + symlinks; verified to apply cleanly together with `dxvk-ios.patch` (whose WSI pixel-size fix Android also wants) |
-| `Patches/dxvk-armv7-support.patch` | Recognizes 32-bit ARM in the pinned DXVK fork's architecture gate, avoiding the `Unknown CPU Architecture` preprocessor error |
+| `Patches/dxvk-armv7-support.patch` | Adds the ARM32 architecture branch and generic ARM32 spinlock fallback; both architecture-only compile errors in the pinned DXVK source are addressed by this local port patch |
 | `cmake/sdl3.cmake` | Android: no system libpng (stb decodes PNG), no TIF/WEBP backends |
 | `Core/.../WW3D2/CMakeLists.txt` | `SAGE_USE_FREETYPE` + Freetype link on Android; fontconfig excluded |
 | `Core/.../WW3D2/render2dsentence.{h,cpp}` | bundled-font locator now iOS **and** Android |
@@ -90,7 +90,7 @@ Each Android preset builds **one ABI per APK**. `armeabi-v7a` is a 32-bit ARM ta
 | SDL3_image 3.4.0 | Built from source; Android disables the TIFF/WebP backends that search for unavailable target libraries, while PNG decoding uses stb. |
 | OpenAL Soft 1.24.2 | Built from source through CMake; no ARM64-only prebuilt is reused. |
 | zlib, GLM, GLI, FreeType, cURL/OpenSSL, GameNetworkingSockets, FFmpeg | Built/targeted through the `armv7-android` vcpkg triplet or the project's Android port. FFmpeg is limited to the requested `avcodec`, `avformat`, `swscale`, and `swresample` features; this is not a claim that every optional FFmpeg feature is available. |
-| DXVK fork (pinned Android source) | This is a project-specific ARMv7 port, not a claim that untouched DXVK v2.6 supports 32-bit ARM. The pinned fork's architecture gate rejected ARM32; the local patch adds the ARM32 architecture branch and leaves its portable compiler-builtin paths available. CI must still complete the full compile, link, APK packaging, and ELF checks before the port can be called build-verified. |
+| DXVK fork (pinned Android source) | This is a project-specific ARMv7 port, not a claim that untouched DXVK v2.6 supports 32-bit ARM. The pinned fork rejected ARM32 in both `util_bit.h` and `sync_spinlock.h`; the local patch adds an ARM32 architecture branch and conservative spin-loop fallback. CI must still complete the full compile, link, APK packaging, and ELF checks before the port can be called build-verified. |
 | libadrenotools / bundled Turnip | Upstream documents Android 9+ Arm64 support only ([libadrenotools README](https://github.com/bylaws/libadrenotools)); both are excluded from the ARMv7 build/package path. The ARMv7 build uses the device's system Vulkan driver. |
 | ANGLE prebuilts | The repository contains only `arm64-v8a` ANGLE libraries. ARMv7 falls back to the system GLES implementation; ANGLE is optional and this fallback must remain functional. |
 | Vulkan validation layer | Diagnostic-only and optional. It is staged under `vulkan_validation/<ABI>/`; the fetcher selects the matching ABI and warns/skips if the release archive does not provide an ARMv7 binary. |

@@ -1,5 +1,12 @@
 name: Build Android
 
+# Both push and pull_request target the same working branch during development.
+# Keep only the newest build for that branch; otherwise every correction launches
+# two expensive native builds and stale commits continue consuming runners.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
 permissions:
   # GeneralsX @feature Android port 09/07/2026 contents:write is needed for the
   # optional "create a GitHub Release" step below (softprops/action-gh-release

@@ -1220,6 +1220,23 @@ public class SetupActivity extends Activity {
 
     private TextView renderBackendStatusView;
 
+    /** ANGLE is optional and ABI-specific; never offer it unless both DSOs are in this APK. */
+    private boolean supportsAngleBackend() {
+        if (!android.os.Process.is64Bit()) {
+            return false;
+        }
+        File libDir = new File(getApplicationInfo().nativeLibraryDir);
+        return new File(libDir, "libEGL_angle.so").isFile()
+            && new File(libDir, "libGLESv2_angle.so").isFile();
+    }
+
+    private String[] availableRenderBackendChoices() {
+        if (supportsAngleBackend()) {
+            return RENDER_BACKEND_CHOICES;
+        }
+        return new String[] { RENDER_BACKEND_GLES, RENDER_BACKEND_VULKAN };
+    }
+
     // No config file yet (fresh install) means "whatever UseVulkanBackend()/
     // UseANGLE() default to today when their env vars are unset" -- GLES,
     // per SDL3Main.cpp's own comment on why this branch defaults there.
@@ -1232,7 +1249,10 @@ public class SetupActivity extends Activity {
             return RENDER_BACKEND_GLES;
         }
         String value = readFirstLine(cfg);
-        if (RENDER_BACKEND_VULKAN.equals(value) || RENDER_BACKEND_GLES_ANGLE.equals(value)) {
+        if (RENDER_BACKEND_VULKAN.equals(value)) {
+            return value;
+        }
+        if (RENDER_BACKEND_GLES_ANGLE.equals(value) && supportsAngleBackend()) {
             return value;
         }
         return RENDER_BACKEND_GLES;
@@ -1357,7 +1377,7 @@ public class SetupActivity extends Activity {
         RENDER_BACKEND_GLES, RENDER_BACKEND_GLES_ANGLE, RENDER_BACKEND_VULKAN
     };
 
-    // GeneralsX @feature Android port launcher-ui-2026 08/09/2026 The three
+    // GeneralsX @feature Android port launcher-ui-2026 08/09/2026 The render
     // backends were behind a "Change Render Backend" button that opened a
     // single-choice dialog -- two taps and a modal to see what you already
     // had selected. They are three fixed, mutually exclusive choices, which
@@ -1409,18 +1429,19 @@ public class SetupActivity extends Activity {
             renderBackendLabel(getRenderBackendChoice())));
 
         String current = getRenderBackendChoice();
+        String[] choices = availableRenderBackendChoices();
         int currentIndex = 0;
-        CharSequence[] labels = new CharSequence[RENDER_BACKEND_CHOICES.length];
-        for (int i = 0; i < RENDER_BACKEND_CHOICES.length; i++) {
-            labels[i] = shortRenderBackendLabel(RENDER_BACKEND_CHOICES[i]);
-            if (RENDER_BACKEND_CHOICES[i].equals(current)) {
+        CharSequence[] labels = new CharSequence[choices.length];
+        for (int i = 0; i < choices.length; i++) {
+            labels[i] = shortRenderBackendLabel(choices[i]);
+            if (choices[i].equals(current)) {
                 currentIndex = i;
             }
         }
         final String initial = current;
         com.google.android.material.button.MaterialButtonToggleGroup group =
             UiKit.segmented(content, labels, currentIndex, index -> {
-            String picked = RENDER_BACKEND_CHOICES[index];
+            String picked = choices[index];
             if (picked.equals(initial)) {
                 return;  // programmatic/no-op selection: nothing to save
             }

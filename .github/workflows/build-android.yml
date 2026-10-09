@@ -214,9 +214,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/ccache
-          key: ccache-android-${{ env.PRESET }}-${{ github.run_id }}
+          key: ccache-android-${{ env.PRESET }}-ndk${{ env.NDK_VERSION }}-${{ github.run_id }}
           restore-keys: |
-            ccache-android-${{ env.PRESET }}-
+            ccache-android-${{ env.PRESET }}-ndk${{ env.NDK_VERSION }}-
 
       - name: Configure ccache
         run: |
@@ -240,9 +240,9 @@ jobs:
           path: |
             /opt/vcpkg
             ~/.cache/vcpkg
-          key: vcpkg-android-${{ runner.os }}-${{ env.ANDROID_ABI }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-lock.json', 'cmake/triplets/arm64-android.cmake', 'cmake/triplets/armv7-android.cmake') }}
+          key: vcpkg-android-${{ runner.os }}-${{ env.ANDROID_ABI }}-ndk${{ env.NDK_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-lock.json', 'cmake/triplets/arm64-android.cmake', 'cmake/triplets/armv7-android.cmake') }}
           restore-keys: |
-            vcpkg-android-${{ runner.os }}-${{ env.ANDROID_ABI }}-${{ env.VCPKG_COMMIT }}-
+            vcpkg-android-${{ runner.os }}-${{ env.ANDROID_ABI }}-ndk${{ env.NDK_VERSION }}-${{ env.VCPKG_COMMIT }}-
 
       # Gradle's own dependency/build cache is handled by gradle/actions/setup-gradle above.
 
@@ -261,7 +261,7 @@ jobs:
           # stale cache kept being "valid" and kept breaking every run.
           # Tying the key to the repo name means a future rename invalidates
           # this cache instead of silently corrupting it again.
-          key: dxvk-android-${{ runner.os }}-${{ github.repository }}-${{ env.ANDROID_ABI }}-${{ env.DXVK_REF }}-${{ hashFiles('Patches/dxvk-android.patch', 'Patches/dxvk-ios.patch', 'Patches/dxvk-armv7-support.patch', 'cmake/dx8.cmake', 'cmake/meson-arm64-android-cross.ini.in', 'cmake/meson-armv7-android-cross.ini.in') }}
+          key: dxvk-android-${{ runner.os }}-${{ github.repository }}-${{ env.ANDROID_ABI }}-ndk${{ env.NDK_VERSION }}-${{ env.DXVK_REF }}-${{ hashFiles('Patches/dxvk-android.patch', 'Patches/dxvk-ios.patch', 'Patches/dxvk-armv7-support.patch', 'cmake/dx8.cmake', 'cmake/meson-arm64-android-cross.ini.in', 'cmake/meson-armv7-android-cross.ini.in') }}
 
       - name: Bootstrap vcpkg
         run: |
@@ -486,6 +486,18 @@ jobs:
           set -euo pipefail
           READELF="$(ls "${ANDROID_NDK_HOME}"/toolchains/llvm/prebuilt/*/bin/llvm-readelf | head -1)"
           APK="${{ steps.locate.outputs.path }}"
+          # A single-ABI APK is intentional: never ship a second, stale jniLibs
+          # directory merely because it was left by a local cross-ABI build.
+          mapfile -t APK_ABIS < <(unzip -Z1 "${APK}" | sed -n 's#^lib/\\([^/]*\\)/libmain\\.so$#\\1#p' | sort -u)
+          if [ "${#APK_ABIS[@]}" -ne 1 ] || [ "${APK_ABIS[0]:-}" != "${ANDROID_ABI}" ]; then
+            echo "::error::APK ABI mismatch: expected exactly ${ANDROID_ABI}, found ${APK_ABIS[*]:-none}"
+            exit 1
+          fi
+          EXTRA_ABIS="$(unzip -Z1 "${APK}" | sed -n 's#^lib/\\([^/]*\\)/[^/]*\\.so$#\\1#p' | sort -u | grep -Fxv "${ANDROID_ABI}" || true)"
+          if [ -n "${EXTRA_ABIS}" ]; then
+            echo "::error::APK contains unexpected native ABIs: ${EXTRA_ABIS}"
+            exit 1
+          fi
           WORKDIR="$(mktemp -d)"
           unzip -q "${APK}" "lib/${ANDROID_ABI}/*" -d "${WORKDIR}"
           echo "Packaged libraries (${ANDROID_ABI}):"
@@ -652,7 +664,7 @@ jobs:
           path: |
             /opt/vcpkg
             ~/.cache/vcpkg
-          key: vcpkg-android-${{ runner.os }}-${{ env.ANDROID_ABI }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-lock.json', 'cmake/triplets/arm64-android.cmake', 'cmake/triplets/armv7-android.cmake') }}
+          key: vcpkg-android-${{ runner.os }}-${{ env.ANDROID_ABI }}-ndk${{ env.NDK_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-lock.json', 'cmake/triplets/arm64-android.cmake', 'cmake/triplets/armv7-android.cmake') }}
 
       - name: Save DXVK build cache
         if: always() && steps.cache-dxvk.outputs.cache-hit != 'true'
@@ -669,7 +681,7 @@ jobs:
           # stale cache kept being "valid" and kept breaking every run.
           # Tying the key to the repo name means a future rename invalidates
           # this cache instead of silently corrupting it again.
-          key: dxvk-android-${{ runner.os }}-${{ github.repository }}-${{ env.ANDROID_ABI }}-${{ env.DXVK_REF }}-${{ hashFiles('Patches/dxvk-android.patch', 'Patches/dxvk-ios.patch', 'Patches/dxvk-armv7-support.patch', 'cmake/dx8.cmake', 'cmake/meson-arm64-android-cross.ini.in', 'cmake/meson-armv7-android-cross.ini.in') }}
+          key: dxvk-android-${{ runner.os }}-${{ github.repository }}-${{ env.ANDROID_ABI }}-ndk${{ env.NDK_VERSION }}-${{ env.DXVK_REF }}-${{ hashFiles('Patches/dxvk-android.patch', 'Patches/dxvk-ios.patch', 'Patches/dxvk-armv7-support.patch', 'cmake/dx8.cmake', 'cmake/meson-arm64-android-cross.ini.in', 'cmake/meson-armv7-android-cross.ini.in') }}
 
       # Always re-save under this run's unique key (the restore-keys prefix
       # match above means later runs pick up the freshest available cache);
@@ -680,4 +692,4 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: ~/.cache/ccache
-          key: ccache-android-${{ env.PRESET }}-${{ github.run_id }}
+          key: ccache-android-${{ env.PRESET }}-ndk${{ env.NDK_VERSION }}-${{ github.run_id }}

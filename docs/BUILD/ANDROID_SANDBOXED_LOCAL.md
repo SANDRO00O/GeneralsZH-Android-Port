@@ -19,8 +19,9 @@ of the box:
   which it downloads the same way
 - CMake's `FetchContent(URL ...)` for SDL3, SDL3_image, and openal-soft
   (`cmake/sdl3.cmake`, `cmake/openal.cmake`) -- release tarballs, not vcpkg
-- a handful of one-off release binaries the packaging script fetches
-  (Liberation fonts, the default Turnip Vulkan driver)
+- a handful of one-off release binaries the packaging script may use
+  (Liberation fonts, the ARM64-only default Turnip Vulkan driver, and an optional
+  ABI-matched Vulkan validation layer)
 
 What **does** work in this environment:
 
@@ -77,8 +78,10 @@ Run it from a repo checkout with:
 ./scripts/build/android/build-local-sandboxed.sh
 ```
 
-It still needs the one-off assets below staged first, or it'll fail with a
-clear error at the step that needs them.
+It needs the fonts staged first. The default Turnip driver is required only for
+ARM64 builds; ARMv7 deliberately uses the device's system Vulkan driver. The
+Vulkan validation layer is optional and a missing ABI match is a warning, not a
+build failure.
 
 ### `android-staging/` is gitignored
 
@@ -106,8 +109,8 @@ the result at the exact path the consuming tool expects:
 | Ninja | `ninja-build/ninja` release zip | `/opt/vcpkg/downloads/ninja-linux-<ver>.zip` (exact filename vcpkg's log asks for -- not the URL's basename) | vcpkg re-verifies on extract |
 | patchelf | `NixOS/patchelf` release tarball | `/opt/vcpkg/downloads/patchelf-<ver>-x86_64.tar.gz` | SHA512 in `vcpkg_find_acquire_program(PATCHELF).cmake` |
 | Liberation fonts | `liberationfonts/liberation-fonts` release/attached-file tarball | extract, rename+copy the 4 `.ttf`s into `${GX_ANDROID_STAGING}/fonts/{arial,arialbold,couriernew,timesnewroman}.ttf` | SHA256 in `scripts/build/ios/stage-fonts.sh` |
-| Turnip driver | `K11MCH1/AdrenoToolsDrivers` release zip | extract `meta.json` + the `.so` it names into `${GX_ANDROID_STAGING}/default_driver/` | `file` reports AArch64; no upstream checksum (script notes why) |
-| Vulkan Validation Layer | `KhronosGroup/Vulkan-ValidationLayers` `android-binaries-<ver>.zip` | extract `arm64-v8a/libVkLayer_khronos_validation.so` into `${GX_ANDROID_STAGING}/vulkan_validation/` | `file` reports AArch64, ~27MB unstripped -- this is expected, not a corrupt download |
+| Turnip driver (ARM64 only) | `K11MCH1/AdrenoToolsDrivers` release zip | extract `meta.json` + the `.so` it names into `${GX_ANDROID_STAGING}/default_driver/` for `arm64-v8a` builds only | `file` reports AArch64; never put this binary in an ARMv7 APK; no upstream checksum (script notes why) |
+| Vulkan Validation Layer (optional) | `KhronosGroup/Vulkan-ValidationLayers` `android-binaries-<ver>.zip` | extract `${ABI}/libVkLayer_khronos_validation.so` into `${GX_ANDROID_STAGING}/vulkan_validation/` when that ABI exists | `file` must match the selected ABI; package script warns and continues if no matching release binary is available |
 
 Correction found 30/07: `github.com/.../releases/download/<tag>/<file>` -- an
 actual asset download, not a page -- works with a plain `curl -fL`, no

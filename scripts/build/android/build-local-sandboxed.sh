@@ -29,7 +29,7 @@ case "${ANDROID_ABI}" in
     exit 1
     ;;
 esac
-NDK_VERSION="27.2.12479018"
+NDK_VERSION="28.2.13676358"
 CMDLINE_TOOLS_VERSION="13114758"
 CMDLINE_TOOLS_SHA1="5fdcc763663eefb86a5b8879697aa6088b041e70"
 VCPKG_COMMIT="42e4e33e1505c9f47b58c21e0f557c1571b751ee"
@@ -199,7 +199,7 @@ for lib in "$GAME_LIB" \
            "build/${PRESET}/_deps/adrenotools-build/src/hook/libhook_impl.so" \
            "build/${PRESET}/_deps/adrenotools-build/src/hook/libmain_hook.so" \
            "build/${PRESET}/_deps/adrenotools-build/src/hook/libfile_redirect_hook.so"; do
-  [ -f "$lib" ] && "$STRIP" --strip-unneeded "$lib"
+  if [ -f "$lib" ]; then "$STRIP" --strip-unneeded "$lib"; fi
 done
 
 export GX_ANDROID_STAGING="${REPO}/android-staging"
@@ -215,10 +215,10 @@ if [ -x /opt/gradle/bin/gradle ]; then
   export PATH="/opt/gradle/bin:$PATH"
 fi
 # Fonts (docs/BUILD/ANDROID_SANDBOXED_LOCAL.md "One-off binary assets") must
-# already be staged at ${GX_ANDROID_STAGING}/fonts/*.ttf, and the default
-# Turnip driver at ${GX_ANDROID_STAGING}/default_driver/{meta.json,*.so} --
-# both are fetched from github.com release assets, which this script can't
-# reach itself.
+# already be staged at ${GX_ANDROID_STAGING}/fonts/*.ttf. The default Turnip
+# driver at ${GX_ANDROID_STAGING}/default_driver/{meta.json,*.so} is needed
+# only for arm64-v8a: adrenotools/Turnip are excluded from ARMv7. These assets
+# are fetched from GitHub release assets, which this script can't reach itself.
 # Always package from a clean Gradle build dir. AGP's incremental packager
 # can leave superseded entries physically in the zip when a library shrinks,
 # rewriting only the central directory -- the .apk then carries dead weight

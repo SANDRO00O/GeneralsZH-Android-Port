@@ -5,7 +5,7 @@
 # with the SDL3 WSI compiled in ("trust no successful exit code").
 #
 # Prerequisites:
-#   - Android NDK r26+          export ANDROID_NDK_HOME=~/Android/Sdk/ndk/<ver>
+#   - Android NDK r28c+         export ANDROID_NDK_HOME=~/Android/Sdk/ndk/<ver>
 #   - vcpkg (FULL clone)        export VCPKG_ROOT=~/vcpkg
 #   - cmake >= 3.25, ninja, meson, pkg-config, git
 #   - git submodule update --init references/fbraz3-dxvk

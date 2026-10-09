@@ -68,6 +68,7 @@ compiled under a shared `SAGE_MOBILE_PLATFORM` guard
 | `cmake/meson-arm64-android-cross.ini.in` / `cmake/meson-armv7-android-cross.ini.in` | ABI-specific DXVK meson cross files (NDK clang, static libc++ into the DXVK libs) |
 | `cmake/dx8.cmake` | `elseif(ANDROID)` branch: builds DXVK d3d8/d3d9 from the local fork with meson; same sdl3.pc trick as macOS (silent-SDL2-WSI trap); artifact copy to build root |
 | `Patches/dxvk-android.patch` | unversioned `.so` names — APKs can't carry `libdxvk_d3d9.so.0.20600` + symlinks; verified to apply cleanly together with `dxvk-ios.patch` (whose WSI pixel-size fix Android also wants) |
+| `Patches/dxvk-armv7-support.patch` | Recognizes 32-bit ARM in the pinned DXVK fork's architecture gate, avoiding the `Unknown CPU Architecture` preprocessor error |
 | `cmake/sdl3.cmake` | Android: no system libpng (stb decodes PNG), no TIF/WEBP backends |
 | `Core/.../WW3D2/CMakeLists.txt` | `SAGE_USE_FREETYPE` + Freetype link on Android; fontconfig excluded |
 | `Core/.../WW3D2/render2dsentence.{h,cpp}` | bundled-font locator now iOS **and** Android |
@@ -78,6 +79,23 @@ compiled under a shared `SAGE_MOBILE_PLATFORM` guard
 | `android/` | Gradle shell: `GeneralsZHActivity extends SDLActivity`, asset extraction, missing-game-data dialog, placeholder adaptive icon |
 | `scripts/build/android/{build,package}-android-zh.sh` | ABI-selectable build + verification (`arm64-v8a` or `armeabi-v7a`, `Sdl3WsiDriver` compiled in), stage jniLibs/Java/assets, gradle assemble |
 | `vcpkg.json` | fontconfig excluded on android; ffmpeg enabled for android |
+
+### Android native dependency / ABI audit
+
+Each Android preset builds **one ABI per APK**. `armeabi-v7a` is a 32-bit ARM target (Thumb-2/NEON), not a 32-bit slice of the `arm64-v8a` build. NDK r28c is pinned because the SDL3 3.4.2 Android build guide requires NDK r28c or newer and SDK 35 or newer ([SDL3 Android build documentation](https://wiki.libsdl.org/SDL3/README-android)). The NDK enables NEON by default for ARM ABIs; do not pass `ANDROID_ARM_NEON=OFF` globally ([Android NDK NEON documentation](https://developer.android.com/ndk/guides/cpu-arm-neon)).
+
+| Component | `armeabi-v7a` status in this project |
+|---|---|
+| SDL3 3.4.2 | Built from source; upstream SDL3 lists `armeabi-v7a` as a supported Android ABI. Requires NDK r28c+ per the current build guide. |
+| SDL3_image 3.4.0 | Built from source; Android disables the TIFF/WebP backends that search for unavailable target libraries, while PNG decoding uses stb. |
+| OpenAL Soft 1.24.2 | Built from source through CMake; no ARM64-only prebuilt is reused. |
+| zlib, GLM, GLI, FreeType, cURL/OpenSSL, GameNetworkingSockets, FFmpeg | Built/targeted through the `armv7-android` vcpkg triplet or the project's Android port. FFmpeg is limited to the requested `avcodec`, `avformat`, `swscale`, and `swresample` features; this is not a claim that every optional FFmpeg feature is available. |
+| DXVK fork (pinned Android source) | This is a project-specific ARMv7 port, not a claim that untouched DXVK v2.6 supports 32-bit ARM. The pinned fork's architecture gate rejected ARM32; the local patch adds the ARM32 architecture branch and leaves its portable compiler-builtin paths available. CI must still complete the full compile, link, APK packaging, and ELF checks before the port can be called build-verified. |
+| libadrenotools / bundled Turnip | Upstream documents Android 9+ Arm64 support only ([libadrenotools README](https://github.com/bylaws/libadrenotools)); both are excluded from the ARMv7 build/package path. The ARMv7 build uses the device's system Vulkan driver. |
+| ANGLE prebuilts | The repository contains only `arm64-v8a` ANGLE libraries. ARMv7 falls back to the system GLES implementation; ANGLE is optional and this fallback must remain functional. |
+| Vulkan validation layer | Diagnostic-only and optional. The staging script selects a matching ABI if present and warns/skips if the release archive does not provide the ARMv7 binary. |
+
+The v7a package step validates every staged `.so` with `llvm-readelf`, and CI also checks that `libmain.so` and both DXVK libraries have ARM ELF headers and that every non-system `DT_NEEDED` dependency is present in the APK. A successful CMake configure alone is **not** a successful Android port: the native build, package step, and APK checks must all pass.
 
 `dx8wrapper.cpp` needed **no change**: its existing Linux branch dlopens
 `libdxvk_d3d8.so` by bare name, which on Android resolves through the app's
@@ -232,7 +250,7 @@ git clone <this repo> && cd <repo>
 git submodule update --init references/fbraz3-dxvk
 git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh
 export VCPKG_ROOT=~/vcpkg
-# Android Studio SDK Manager (or cmdline-tools): install NDK 26+, platform 35, build-tools
+# Android Studio SDK Manager (or cmdline-tools): install NDK r28c+, platform 35, build-tools
 export ANDROID_NDK_HOME=~/Android/Sdk/ndk/<version>
 # meson + ninja + pkg-config via pip/brew/apt
 

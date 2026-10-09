@@ -1,0 +1,11 @@
+diff --git a/src/util/util_bit.h b/src/util/util_bit.h
+--- a/src/util/util_bit.h
++++ b/src/util/util_bit.h
+@@ -9,5 +9,7 @@
+ #elif defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM64EC)
+   #define DXVK_ARCH_ARM64
++#elif defined(__arm__) || defined(_M_ARM)
++  #define DXVK_ARCH_ARM32
+ #else
+ #error "Unknown CPU Architecture"
+ #endif

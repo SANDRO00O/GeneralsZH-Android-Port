@@ -284,7 +284,7 @@ static void FilterPipeWireOpenAL()
 	#endif
 }
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) && defined(__aarch64__)
 /**
  * TryLoadCustomVulkanDriver
  *
@@ -436,7 +436,7 @@ static void TryLoadCustomVulkanDriver(const char *internalPath)
 	fprintf(stderr, "INFO: Loaded custom Vulkan driver '%s' via libadrenotools (hookLibDir=%s)\n",
 	        driverName, hookLibDir.c_str());
 }
-#endif // __ANDROID__
+#endif // __ANDROID__ && __aarch64__
 
 /**
  * CreateGameEngine

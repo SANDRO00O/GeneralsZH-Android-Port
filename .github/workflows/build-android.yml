@@ -488,12 +488,12 @@ jobs:
           APK="${{ steps.locate.outputs.path }}"
           # A single-ABI APK is intentional: never ship a second, stale jniLibs
           # directory merely because it was left by a local cross-ABI build.
-          mapfile -t APK_ABIS < <(unzip -Z1 "${APK}" | sed -n 's#^lib/\\([^/]*\\)/libmain\\.so$#\\1#p' | sort -u)
+          mapfile -t APK_ABIS < <(unzip -Z1 "${APK}" | awk -F/ '$1 == "lib" && $3 == "libmain.so" { print $2 }' | sort -u)
           if [ "${#APK_ABIS[@]}" -ne 1 ] || [ "${APK_ABIS[0]:-}" != "${ANDROID_ABI}" ]; then
             echo "::error::APK ABI mismatch: expected exactly ${ANDROID_ABI}, found ${APK_ABIS[*]:-none}"
             exit 1
           fi
-          EXTRA_ABIS="$(unzip -Z1 "${APK}" | sed -n 's#^lib/\\([^/]*\\)/[^/]*\\.so$#\\1#p' | sort -u | grep -Fxv "${ANDROID_ABI}" || true)"
+          EXTRA_ABIS="$(unzip -Z1 "${APK}" | awk -F/ '$1 == "lib" && NF == 3 && $3 ~ /\.so$/ { print $2 }' | sort -u | grep -Fxv "${ANDROID_ABI}" || true)"
           if [ -n "${EXTRA_ABIS}" ]; then
             echo "::error::APK contains unexpected native ABIs: ${EXTRA_ABIS}"
             exit 1

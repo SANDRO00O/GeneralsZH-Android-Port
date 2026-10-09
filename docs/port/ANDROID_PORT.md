@@ -93,7 +93,7 @@ Each Android preset builds **one ABI per APK**. `armeabi-v7a` is a 32-bit ARM ta
 | DXVK fork (pinned Android source) | This is a project-specific ARMv7 port, not a claim that untouched DXVK v2.6 supports 32-bit ARM. The pinned fork's architecture gate rejected ARM32; the local patch adds the ARM32 architecture branch and leaves its portable compiler-builtin paths available. CI must still complete the full compile, link, APK packaging, and ELF checks before the port can be called build-verified. |
 | libadrenotools / bundled Turnip | Upstream documents Android 9+ Arm64 support only ([libadrenotools README](https://github.com/bylaws/libadrenotools)); both are excluded from the ARMv7 build/package path. The ARMv7 build uses the device's system Vulkan driver. |
 | ANGLE prebuilts | The repository contains only `arm64-v8a` ANGLE libraries. ARMv7 falls back to the system GLES implementation; ANGLE is optional and this fallback must remain functional. |
-| Vulkan validation layer | Diagnostic-only and optional. The staging script selects a matching ABI if present and warns/skips if the release archive does not provide the ARMv7 binary. |
+| Vulkan validation layer | Diagnostic-only and optional. It is staged under `vulkan_validation/<ABI>/`; the fetcher selects the matching ABI and warns/skips if the release archive does not provide an ARMv7 binary. |
 
 The v7a package step validates every staged `.so` with `llvm-readelf`, and CI also checks that `libmain.so` and both DXVK libraries have ARM ELF headers and that every non-system `DT_NEEDED` dependency is present in the APK. A successful CMake configure alone is **not** a successful Android port: the native build, package step, and APK checks must all pass.
 

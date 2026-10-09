@@ -199,10 +199,11 @@ fi
 # see docs/BUILD/ANDROID_SANDBOXED_LOCAL.md). Not required for the game to
 # run -- skip with a warning instead of failing the build if it isn't
 # staged, same as the diagnostic tool it is.
-VVL_STAGED="${STAGING}/vulkan_validation/libVkLayer_khronos_validation.so"
+VVL_STAGED="${STAGING}/vulkan_validation/${ANDROID_ABI}/libVkLayer_khronos_validation.so"
 if [[ ! -f "${VVL_STAGED}" ]]; then
     echo "==> Vulkan validation layer not staged yet; fetching"
-    "${PROJECT_ROOT}/scripts/build/android/fetch-vulkan-validation-layer.sh" || true
+    GX_VULKAN_VALIDATION="${STAGING}/vulkan_validation/${ANDROID_ABI}" \
+        "${PROJECT_ROOT}/scripts/build/android/fetch-vulkan-validation-layer.sh" || true
 fi
 if [[ -f "${VVL_STAGED}" ]]; then
     cp "${VVL_STAGED}" "${JNILIBS}/"

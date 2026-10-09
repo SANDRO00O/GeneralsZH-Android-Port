@@ -21,7 +21,7 @@ case "${ANDROID_ABI}" in
     arm64-v8a|armeabi-v7a) ;;
     *) echo "ERROR: unsupported GX_ANDROID_ABI='${ANDROID_ABI}'"; exit 1 ;;
 esac
-DEST="${GX_VULKAN_VALIDATION:-${HOME}/GeneralsX/android-staging/vulkan_validation}"
+DEST="${GX_VULKAN_VALIDATION:-${HOME}/GeneralsX/android-staging/vulkan_validation/${ANDROID_ABI}}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 

@@ -21,7 +21,7 @@ of the box:
   (`cmake/sdl3.cmake`, `cmake/openal.cmake`) -- release tarballs, not vcpkg
 - a handful of one-off release binaries the packaging script may use
   (Liberation fonts, the ARM64-only default Turnip Vulkan driver, and an optional
-  ABI-matched Vulkan validation layer)
+  ABI-matched Vulkan validation layer, staged under `vulkan_validation/<ABI>/`)
 
 What **does** work in this environment:
 
@@ -110,7 +110,7 @@ the result at the exact path the consuming tool expects:
 | patchelf | `NixOS/patchelf` release tarball | `/opt/vcpkg/downloads/patchelf-<ver>-x86_64.tar.gz` | SHA512 in `vcpkg_find_acquire_program(PATCHELF).cmake` |
 | Liberation fonts | `liberationfonts/liberation-fonts` release/attached-file tarball | extract, rename+copy the 4 `.ttf`s into `${GX_ANDROID_STAGING}/fonts/{arial,arialbold,couriernew,timesnewroman}.ttf` | SHA256 in `scripts/build/ios/stage-fonts.sh` |
 | Turnip driver (ARM64 only) | `K11MCH1/AdrenoToolsDrivers` release zip | extract `meta.json` + the `.so` it names into `${GX_ANDROID_STAGING}/default_driver/` for `arm64-v8a` builds only | `file` reports AArch64; never put this binary in an ARMv7 APK; no upstream checksum (script notes why) |
-| Vulkan Validation Layer (optional) | `KhronosGroup/Vulkan-ValidationLayers` `android-binaries-<ver>.zip` | extract `${ABI}/libVkLayer_khronos_validation.so` into `${GX_ANDROID_STAGING}/vulkan_validation/` when that ABI exists | `file` must match the selected ABI; package script warns and continues if no matching release binary is available |
+| Vulkan Validation Layer (optional) | `KhronosGroup/Vulkan-ValidationLayers` `android-binaries-<ver>.zip` | extract `${ABI}/libVkLayer_khronos_validation.so` into `${GX_ANDROID_STAGING}/vulkan_validation/${ABI}/` when that ABI exists | `file` must match the selected ABI; package script warns and continues if no matching release binary is available |
 
 Correction found 30/07: `github.com/.../releases/download/<tag>/<file>` -- an
 actual asset download, not a page -- works with a plain `curl -fL`, no

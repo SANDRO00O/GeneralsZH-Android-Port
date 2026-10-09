@@ -5,7 +5,7 @@
 # with the SDL3 WSI compiled in ("trust no successful exit code").
 #
 # Prerequisites:
-#   - Android NDK r26+          export ANDROID_NDK_HOME=~/Android/Sdk/ndk/<ver>
+#   - Android NDK r28c+         export ANDROID_NDK_HOME=~/Android/Sdk/ndk/<ver>
 #   - vcpkg (FULL clone)        export VCPKG_ROOT=~/vcpkg
 #   - cmake >= 3.25, ninja, meson, pkg-config, git
 #   - git submodule update --init references/fbraz3-dxvk
@@ -15,7 +15,23 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
-BUILD_DIR="${PROJECT_ROOT}/build/android-vulkan"
+
+ANDROID_ABI="${GX_ANDROID_ABI:-arm64-v8a}"
+case "${ANDROID_ABI}" in
+    arm64-v8a)
+        PRESET="android-vulkan"
+        EXPECTED_ELF_MACHINE="AArch64"
+        ;;
+    armeabi-v7a)
+        PRESET="android-vulkan-armv7"
+        EXPECTED_ELF_MACHINE="ARM"
+        ;;
+    *)
+        echo "ERROR: unsupported GX_ANDROID_ABI='${ANDROID_ABI}' (expected arm64-v8a or armeabi-v7a)."
+        exit 1
+        ;;
+esac
+BUILD_DIR="${PROJECT_ROOT}/build/${PRESET}"
 
 CONFIGURE_ONLY=0
 for arg in "$@"; do
@@ -66,15 +82,15 @@ fi
 
 # --- configure + build -------------------------------------------------------
 cd "${PROJECT_ROOT}"
-echo "==> Configuring (preset: android-vulkan)"
-cmake --preset android-vulkan
+echo "==> Configuring (preset: ${PRESET}, ABI: ${ANDROID_ABI})"
+cmake --preset "${PRESET}"
 
 if [[ $CONFIGURE_ONLY -eq 1 ]]; then
     echo "==> Configure-only requested; stopping."
     exit 0
 fi
 
-echo "==> Building z_generals (libmain.so) + DXVK d3d8/d3d9"
+echo "==> Building z_generals (libmain.so) + DXVK d3d8/d3d9 for ${ANDROID_ABI}"
 # GeneralsX @bugfix Android port 10/07/2026 main_hook/file_redirect_hook/
 # gsl_alloc_hook/hook_impl (cmake/adrenotools.cmake) are separate shared
 # libraries adrenotools_open_libvulkan() dlopen()s by path at runtime -- they
@@ -92,8 +108,11 @@ echo "==> Building z_generals (libmain.so) + DXVK d3d8/d3d9"
 # another because of it. One touch is cheaper than that ambiguity.
 touch "${PROJECT_ROOT}/GeneralsMD/Code/Main/AndroidCrashHandler.cpp"
 
-cmake --build "${BUILD_DIR}" --target z_generals dxvk_d3d8_install \
-    main_hook file_redirect_hook gsl_alloc_hook hook_impl
+BUILD_TARGETS=(z_generals dxvk_d3d8_install)
+if [[ "${ANDROID_ABI}" == "arm64-v8a" ]]; then
+    BUILD_TARGETS+=(main_hook file_redirect_hook gsl_alloc_hook hook_impl)
+fi
+cmake --build "${BUILD_DIR}" --target "${BUILD_TARGETS[@]}"
 
 # --- artifact verification ---------------------------------------------------
 # Silent fallbacks all exit 0; check what actually got built.
@@ -110,8 +129,8 @@ fi
 # readelf has finished writing, killing readelf with SIGPIPE (status 141) -- a
 # race that fails a perfectly good AArch64 build at random.
 GAME_LIB_ELF_HEADER="$("${READELF}" -h "${GAME_LIB}")"
-if ! grep -q "AArch64" <<< "${GAME_LIB_ELF_HEADER}"; then
-    echo "ERROR: ${GAME_LIB} is not AArch64 — wrong toolchain reached the build."
+if ! grep -q "Machine:[[:space:]]*${EXPECTED_ELF_MACHINE}" <<< "${GAME_LIB_ELF_HEADER}"; then
+    echo "ERROR: ${GAME_LIB} is not ${EXPECTED_ELF_MACHINE} — wrong toolchain reached the build."
     exit 1
 fi
 

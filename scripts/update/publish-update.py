@@ -108,9 +108,13 @@ def main():
     if a.apk:
         with zipfile.ZipFile(a.apk) as z:
             seq = int(z.read("assets/engine_build.txt").decode().strip())
+            abi_paths = sorted({n.split("/", 2)[1] for n in z.namelist() if n.startswith("lib/") and n.endswith("/libmain.so")})
+            if len(abi_paths) != 1 or abi_paths[0] not in ("arm64-v8a", "armeabi-v7a"):
+                sys.exit("APK must contain exactly one supported native ABI (arm64-v8a or armeabi-v7a)")
+            abi = abi_paths[0]
             libs = {os.path.basename(n): n for n in z.namelist()
-                    if n.startswith("lib/arm64-v8a/") and n.endswith(".so")}
-            engine = {"seq": seq, "files": {}, "requires_libs": {}}
+                    if n.startswith("lib/%s/" % abi) and n.endswith(".so")}
+            engine = {"seq": seq, "abi": abi, "files": {}, "requires_libs": {}}
             for name, path in sorted(libs.items()):
                 data = z.read(path)
                 if name in ENGINE_LIBS:

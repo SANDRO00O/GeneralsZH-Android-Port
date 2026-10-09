@@ -105,6 +105,11 @@ extern "C" bool d3d8gles_ShouldUseVulkanBackend()
 
 extern "C" bool d3d8gles_ShouldUseANGLE()
 {
+#if defined(__arm__) && !defined(__aarch64__)
+	// ANGLE prebuilts in this project are Arm64-only. On ARMv7, ignore stale
+	// config/env requests and use the system GLES implementation instead.
+	return false;
+#else
 	const char *configured = ReadRenderBackendConfigFile();
 	if (configured != nullptr) {
 		return strcmp(configured, "gles_angle") == 0;
@@ -124,6 +129,7 @@ extern "C" bool d3d8gles_ShouldUseANGLE()
 	// explicit. Default OFF like the Vulkan check now.
 	const char *v = getenv("GENERALSX_GLES_ANGLE");
 	return v != nullptr && strcmp(v, "0") != 0;
+#endif // !(__arm__ && !__aarch64__)
 }
 #endif // __ANDROID__
 

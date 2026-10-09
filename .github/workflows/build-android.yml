@@ -1,5 +1,12 @@
 name: Build Android
 
+# Both push and pull_request target the same working branch during development.
+# Keep only the newest build for that branch; otherwise every correction launches
+# two expensive native builds and stale commits continue consuming runners.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
 permissions:
   # GeneralsX @feature Android port 09/07/2026 contents:write is needed for the
   # optional "create a GitHub Release" step below (softprops/action-gh-release
@@ -16,6 +23,9 @@ permissions:
   actions: write
 
 on:
+  push:
+    branches:
+      - feature/android-armv7
   # GeneralsX @bugfix Android CI 01/08/2026 dropped the push: trigger that
   # used to fire a full CI build on every push to main/claude/** touching
   # these paths. This session's actual dev loop builds and checksum-verifies
@@ -48,6 +58,7 @@ on:
         description: "CMake preset for Android"
         options:
           - android-vulkan
+          - android-vulkan-armv7
         default: android-vulkan
       version_name:
         type: string
@@ -68,14 +79,19 @@ on:
 
 jobs:
   build-android:
-    name: apk@${{ inputs.preset || 'android-vulkan' }}
+    name: apk@${{ inputs.preset || ((github.head_ref || github.ref_name) == 'feature/android-armv7' && 'android-vulkan-armv7' || 'android-vulkan') }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      PRESET: ${{ inputs.preset || 'android-vulkan' }}
+      # The ARMv7 feature branch/PR defaults to the ARMv7 preset so an automatic [trigger probe]
+      # validation run actually exercises the path this branch is adding. Manual
+      # dispatch can still select either preset explicitly. On pull_request events
+      # github.head_ref is the source branch; on push events github.ref_name is.
+      PRESET: ${{ inputs.preset || ((github.head_ref || github.ref_name) == 'feature/android-armv7' && 'android-vulkan-armv7' || 'android-vulkan') }}
+      ANDROID_ABI: ${{ (inputs.preset || ((github.head_ref || github.ref_name) == 'feature/android-armv7' && 'android-vulkan-armv7' || 'android-vulkan')) == 'android-vulkan-armv7' && 'armeabi-v7a' || 'arm64-v8a' }}
       # Pinned exact NDK release (not "latest") so a cross-compile that works
       # today doesn't silently pick up a different toolchain in six months.
-      NDK_VERSION: "27.2.12479018"
+      NDK_VERSION: "28.2.13676358"
       GRADLE_VERSION: "8.9"
       # cmdline-tools zip (pinned + sha1 from Google's repository2-3.xml manifest);
       # its sdkmanager then installs the NDK/platform/build-tools above.
@@ -136,8 +152,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: /opt/android-sdk
-          key: android-sdk-${{ env.CMDLINE_TOOLS_VERSION }}-ndk${{ env.NDK_VERSION }}-p35-bt35
+          key: android-sdk-v2-${{ env.CMDLINE_TOOLS_VERSION }}-ndk${{ env.NDK_VERSION }}-p35-bt35
       - name: Install Android SDK (cmdline-tools + NDK + platform + build-tools)
+        id: install-android-sdk
         if: steps.cache-android-sdk.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
@@ -152,8 +169,24 @@ jobs:
           rm /tmp/cmdline-tools.zip
           SDKMANAGER=/opt/android-sdk/cmdline-tools/latest/bin/sdkmanager
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" --install "ndk;${{ env.NDK_VERSION }}" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+          # sdkmanager can receive a truncated NDK archive ("ZipFile unknown archive").
+          # Retry the install and clear SDK-manager temporary/download state, so a corrupt
+          # archive is not reused. Already installed packages are safe to keep between attempts.
+          installed=0
+          for attempt in 1 2 3; do
+            if "$SDKMANAGER" --install "ndk;${{ env.NDK_VERSION }}" "platforms;android-35" "build-tools;35.0.0" "platform-tools"; then
+              installed=1
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::Android SDK package install failed on attempt $attempt/3; retrying."
+              rm -rf "$HOME/.android/cache" /opt/android-sdk/.temp "/opt/android-sdk/ndk/${{ env.NDK_VERSION }}"
+              sleep $((attempt * 10))
+            fi
+          done
+          [ "$installed" = "1" ] || { echo "::error::Android SDK packages failed to install after 3 attempts"; exit 1; }
       - name: Export Android SDK environment
+        id: export-android-sdk
         run: |
           set -euo pipefail
           echo "ANDROID_HOME=/opt/android-sdk" >> "$GITHUB_ENV"
@@ -205,15 +238,15 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.cache/ccache
-          key: ccache-android-${{ env.PRESET }}-${{ github.run_id }}
+          key: ccache-android-${{ env.PRESET }}-ndk${{ env.NDK_VERSION }}-${{ github.run_id }}
           restore-keys: |
-            ccache-android-${{ env.PRESET }}-
+            ccache-android-${{ env.PRESET }}-ndk${{ env.NDK_VERSION }}-
 
       - name: Configure ccache
         run: |
           set -euo pipefail
           ccache --set-config=max_size=3G
-          # Cross-compiles (host clang, target arm64-android via NDK sysroot)
+          # Cross-compiles (host clang, target Android ARM via the NDK sysroot)
           # confuse ccache's default mtime-based direct mode across different
           # checkouts; content hashing keeps hits reliable and is barely
           # slower once warm.
@@ -231,9 +264,9 @@ jobs:
           path: |
             /opt/vcpkg
             ~/.cache/vcpkg
-          key: vcpkg-android-${{ runner.os }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-lock.json', 'cmake/triplets/arm64-android.cmake') }}
+          key: vcpkg-android-${{ runner.os }}-${{ env.ANDROID_ABI }}-ndk${{ env.NDK_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-lock.json', 'cmake/triplets/arm64-android.cmake', 'cmake/triplets/armv7-android.cmake') }}
           restore-keys: |
-            vcpkg-android-${{ runner.os }}-${{ env.VCPKG_COMMIT }}-
+            vcpkg-android-${{ runner.os }}-${{ env.ANDROID_ABI }}-ndk${{ env.NDK_VERSION }}-${{ env.VCPKG_COMMIT }}-
 
       # Gradle's own dependency/build cache is handled by gradle/actions/setup-gradle above.
 
@@ -252,7 +285,7 @@ jobs:
           # stale cache kept being "valid" and kept breaking every run.
           # Tying the key to the repo name means a future rename invalidates
           # this cache instead of silently corrupting it again.
-          key: dxvk-android-${{ runner.os }}-${{ github.repository }}-${{ env.DXVK_REF }}-${{ hashFiles('Patches/dxvk-android.patch', 'Patches/dxvk-ios.patch', 'cmake/dx8.cmake', 'cmake/meson-arm64-android-cross.ini.in') }}
+          key: dxvk-android-${{ runner.os }}-${{ github.repository }}-${{ env.ANDROID_ABI }}-ndk${{ env.NDK_VERSION }}-${{ env.DXVK_REF }}-${{ hashFiles('Patches/dxvk-android.patch', 'Patches/dxvk-ios.patch', 'Patches/dxvk-armv7-support.patch', 'cmake/dx8.cmake', 'cmake/meson-arm64-android-cross.ini.in', 'cmake/meson-armv7-android-cross.ini.in') }}
 
       - name: Bootstrap vcpkg
         run: |
@@ -300,8 +333,14 @@ jobs:
           # link-time dependency of z_generals, so a targeted build skips them
           # unless named explicitly -- package-android-zh.sh's jniLibs staging
           # requires all four to already exist.
-          cmake --build build/${{ env.PRESET }} --target z_generals dxvk_d3d8_install \
-            main_hook file_redirect_hook gsl_alloc_hook hook_impl -- -k 0 2>&1 | tee logs/build_android.log
+          BUILD_TARGETS=(z_generals dxvk_d3d8_install)
+          # AdrenoTools and its hook DSOs are intentionally excluded from ARMv7:
+          # upstream is AArch64-only, and the ARMv7 package script skips these
+          # optional custom-driver libraries.
+          if [[ "${ANDROID_ABI}" == "arm64-v8a" ]]; then
+            BUILD_TARGETS+=(main_hook file_redirect_hook gsl_alloc_hook hook_impl)
+          fi
+          cmake --build build/${{ env.PRESET }} --target "${BUILD_TARGETS[@]}" -- -k 0 2>&1 | tee logs/build_android.log
           ccache --show-stats
 
       - name: Verify artifacts
@@ -334,21 +373,22 @@ jobs:
           # to a process started microseconds later. Retry a few times with
           # a short sleep before failing for real; a genuinely wrong-arch
           # binary will still fail every attempt and correctly error out.
+          if [ "${ANDROID_ABI}" = "armeabi-v7a" ]; then EXPECTED_ELF_MACHINE="ARM"; else EXPECTED_ELF_MACHINE="AArch64"; fi
           READELF_OK=0
           for attempt in 1 2 3 4 5; do
-            if "$READELF" -h "$GAME_LIB" 2>/dev/null | grep -q AArch64; then
+            if "$READELF" -h "$GAME_LIB" 2>/dev/null | grep -q "Machine:[[:space:]]*${EXPECTED_ELF_MACHINE}"; then
               READELF_OK=1
               break
             fi
             sleep 1
           done
-          [ "$READELF_OK" = "1" ] || { echo "::error::libmain.so is not AArch64"; exit 1; }
+          [ "$READELF_OK" = "1" ] || { echo "::error::libmain.so is not ${EXPECTED_ELF_MACHINE} (${ANDROID_ABI})"; exit 1; }
           for lib in libdxvk_d3d8.so libdxvk_d3d9.so; do
             [ -f "build/${{ env.PRESET }}/$lib" ] || { echo "::error::$lib missing"; exit 1; }
           done
           strings "build/${{ env.PRESET }}/libdxvk_d3d9.so" | grep -q Sdl3WsiDriver || {
             echo "::error::libdxvk_d3d9.so built without the SDL3 WSI (silent fallback)"; exit 1; }
-          echo "Artifacts verified: AArch64 libmain.so + DXVK with SDL3 WSI"
+          echo "Artifacts verified: ${EXPECTED_ELF_MACHINE} libmain.so + DXVK with SDL3 WSI (${ANDROID_ABI})"
 
       # GeneralsX @feature Android CI 06/09/2026 The strip step below is what
       # keeps the APK at ~42MB instead of ~118MB, but it also destroys the one
@@ -418,7 +458,7 @@ jobs:
                      "build/${{ env.PRESET }}/_deps/adrenotools-build/src/hook/libhook_impl.so" \
                      "build/${{ env.PRESET }}/_deps/adrenotools-build/src/hook/libmain_hook.so" \
                      "build/${{ env.PRESET }}/_deps/adrenotools-build/src/hook/libfile_redirect_hook.so"; do
-            [ -f "$lib" ] && "$STRIP" --strip-unneeded "$lib"
+            if [ -f "$lib" ]; then "$STRIP" --strip-unneeded "$lib"; fi
           done
 
       - name: Set artifact version
@@ -432,7 +472,7 @@ jobs:
           # Gradle falls back to whatever is committed in build.gradle.
           echo "version_code=${{ inputs.version_code || '' }}" >> "$GITHUB_OUTPUT"
           echo "version_name=${{ inputs.version_name || '' }}" >> "$GITHUB_OUTPUT"
-          echo "apk_name=GeneralsXZH-android-run${{ github.run_number }}.apk" >> "$GITHUB_OUTPUT"
+          echo "apk_name=GeneralsXZH-android-${{ env.ANDROID_ABI }}-run${{ github.run_number }}.apk" >> "$GITHUB_OUTPUT"
 
       - name: Package APK
         env:
@@ -444,6 +484,7 @@ jobs:
           # by hand (in build.gradle or via a manual-dispatch override) since
           # the last build the user actually installed.
           GX_ANDROID_STAGING: ${{ github.workspace }}/android-staging
+          GX_ANDROID_ABI: ${{ env.ANDROID_ABI }}
           GX_ANDROID_VERSION_CODE: ${{ steps.artifact.outputs.version_code }}
           GX_ANDROID_VERSION_NAME: ${{ steps.artifact.outputs.version_name }}
         run: |
@@ -463,17 +504,29 @@ jobs:
       # package-android-zh.sh only warned, and nothing checked the actual APK
       # contents against what libmain.so declares it needs. Do that here:
       # every non-system DT_NEEDED of libmain.so must be a real file inside
-      # the APK's lib/arm64-v8a/, or the build is not actually shippable.
+      # the APK's selected ABI directory, or the build is not actually shippable.
       - name: Verify APK contains every library libmain.so needs
         run: |
           set -euo pipefail
           READELF="$(ls "${ANDROID_NDK_HOME}"/toolchains/llvm/prebuilt/*/bin/llvm-readelf | head -1)"
           APK="${{ steps.locate.outputs.path }}"
+          # A single-ABI APK is intentional: never ship a second, stale jniLibs
+          # directory merely because it was left by a local cross-ABI build.
+          mapfile -t APK_ABIS < <(unzip -Z1 "${APK}" | awk -F/ '$1 == "lib" && $3 == "libmain.so" { print $2 }' | sort -u)
+          if [ "${#APK_ABIS[@]}" -ne 1 ] || [ "${APK_ABIS[0]:-}" != "${ANDROID_ABI}" ]; then
+            echo "::error::APK ABI mismatch: expected exactly ${ANDROID_ABI}, found ${APK_ABIS[*]:-none}"
+            exit 1
+          fi
+          EXTRA_ABIS="$(unzip -Z1 "${APK}" | awk -F/ '$1 == "lib" && NF == 3 && $3 ~ /\.so$/ { print $2 }' | sort -u | grep -Fxv "${ANDROID_ABI}" || true)"
+          if [ -n "${EXTRA_ABIS}" ]; then
+            echo "::error::APK contains unexpected native ABIs: ${EXTRA_ABIS}"
+            exit 1
+          fi
           WORKDIR="$(mktemp -d)"
-          unzip -q "${APK}" 'lib/arm64-v8a/*' -d "${WORKDIR}"
-          echo "Packaged libraries:"
-          ls "${WORKDIR}/lib/arm64-v8a/"
-          NEEDED="$("${READELF}" -d "${WORKDIR}/lib/arm64-v8a/libmain.so" | grep NEEDED | sed -E 's/.*\[(.*)\]/\1/')"
+          unzip -q "${APK}" "lib/${ANDROID_ABI}/*" -d "${WORKDIR}"
+          echo "Packaged libraries (${ANDROID_ABI}):"
+          ls "${WORKDIR}/lib/${ANDROID_ABI}/"
+          NEEDED="$("${READELF}" -d "${WORKDIR}/lib/${ANDROID_ABI}/libmain.so" | grep NEEDED | sed -E 's/.*\[(.*)\]/\1/')"
           missing=0
           for lib in ${NEEDED}; do
             case "${lib}" in
@@ -482,7 +535,7 @@ jobs:
                              # #11 caught libmediandk.so, pulled in by FFmpeg's MediaCodec
                              # backend, missing from this allowlist — see docs/port/ANDROID_PORT.md)
             esac
-            if [ ! -f "${WORKDIR}/lib/arm64-v8a/${lib}" ]; then
+            if [ ! -f "${WORKDIR}/lib/${ANDROID_ABI}/${lib}" ]; then
               echo "::error::libmain.so needs '${lib}' at runtime but it is not packaged in the APK"
               missing=1
             fi
@@ -622,11 +675,11 @@ jobs:
       # why plain actions/cache can't do this). Guard each save so a run that
       # restored an exact-key hit doesn't fail trying to re-save it.
       - name: Save Android SDK cache
-        if: always() && steps.cache-android-sdk.outputs.cache-hit != 'true'
+        if: always() && steps.cache-android-sdk.outputs.cache-hit != 'true' && steps.install-android-sdk.outcome == 'success' && steps.export-android-sdk.outcome == 'success'
         uses: actions/cache/save@v5
         with:
           path: /opt/android-sdk
-          key: android-sdk-${{ env.CMDLINE_TOOLS_VERSION }}-ndk${{ env.NDK_VERSION }}-p35-bt35
+          key: android-sdk-v2-${{ env.CMDLINE_TOOLS_VERSION }}-ndk${{ env.NDK_VERSION }}-p35-bt35
 
       - name: Save vcpkg cache
         if: always() && steps.cache-vcpkg.outputs.cache-hit != 'true'
@@ -635,7 +688,7 @@ jobs:
           path: |
             /opt/vcpkg
             ~/.cache/vcpkg
-          key: vcpkg-android-${{ runner.os }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-lock.json', 'cmake/triplets/arm64-android.cmake') }}
+          key: vcpkg-android-${{ runner.os }}-${{ env.ANDROID_ABI }}-ndk${{ env.NDK_VERSION }}-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json', 'vcpkg-lock.json', 'cmake/triplets/arm64-android.cmake', 'cmake/triplets/armv7-android.cmake') }}
 
       - name: Save DXVK build cache
         if: always() && steps.cache-dxvk.outputs.cache-hit != 'true'
@@ -652,7 +705,7 @@ jobs:
           # stale cache kept being "valid" and kept breaking every run.
           # Tying the key to the repo name means a future rename invalidates
           # this cache instead of silently corrupting it again.
-          key: dxvk-android-${{ runner.os }}-${{ github.repository }}-${{ env.DXVK_REF }}-${{ hashFiles('Patches/dxvk-android.patch', 'Patches/dxvk-ios.patch', 'cmake/dx8.cmake', 'cmake/meson-arm64-android-cross.ini.in') }}
+          key: dxvk-android-${{ runner.os }}-${{ github.repository }}-${{ env.ANDROID_ABI }}-ndk${{ env.NDK_VERSION }}-${{ env.DXVK_REF }}-${{ hashFiles('Patches/dxvk-android.patch', 'Patches/dxvk-ios.patch', 'Patches/dxvk-armv7-support.patch', 'cmake/dx8.cmake', 'cmake/meson-arm64-android-cross.ini.in', 'cmake/meson-armv7-android-cross.ini.in') }}
 
       # Always re-save under this run's unique key (the restore-keys prefix
       # match above means later runs pick up the freshest available cache);
@@ -663,4 +716,4 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: ~/.cache/ccache
-          key: ccache-android-${{ env.PRESET }}-${{ github.run_id }}
+          key: ccache-android-${{ env.PRESET }}-ndk${{ env.NDK_VERSION }}-${{ github.run_id }}

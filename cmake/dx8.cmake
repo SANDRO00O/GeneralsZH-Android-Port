@@ -609,7 +609,7 @@ elseif(ANDROID)
   # increment / release-only-decrement-with-no-fence bug entirely. Same fix
   # as always: relaxed increment, release decrement, explicit acquire fence
   # before delete on the thread that observes the count reach zero.
-  foreach(DXVK_PATCH_NAME dxvk-android.patch dxvk-ios.patch dxvk-vulkan11-adaptive.patch dxvk-resource-refcount-memory-order.patch dxvk-mali-clip-distance.patch dxvk-mali-g76-robustness2-optional.patch dxvk-android-missing-fallback-extensions.patch dxvk-mali-g76-legacy-barrier-fallback.patch dxvk-mali-g76-semaphore-fn-fallback.patch dxvk-mali-g76-4444-format.patch dxvk-mali-g76-copy-commands2.patch dxvk-mali-g76-legacy-copy-fallback.patch dxvk-mali-g76-legacy-render-pass.patch dxvk-mali-g76-composite-alpha.patch dxvk-mali-g76-vertex-buffer-stride-fallback.patch dxvk-mali-g76-extended-dynamic-state.patch dxvk-mali-g76-dynamic-state-fallback.patch dxvk-mali-g76-demote-to-helper-fallback.patch dxvk-mali-g76-null-descriptor-fallback.patch dxvk-mali-g76-swapchain-blitter-legacy-renderpass.patch dxvk-mali-g76-blitter-pipeline-legacy-renderpass.patch dxvk-mali-g76-blitter-null-descriptor-fallback.patch dxvk-mali-g76-format-properties3-fallback.patch dxvk-mali-g76-hud-image-legacy-renderpass.patch dxvk-mali-g76-hud-stderr-log.patch dxvk-composite-alpha-log.patch dxvk-android-force-opaque-alpha.patch dxvk-refcount-memory-order-audit.patch dxvk-gpu-event-second-class-refcount-memory-order.patch)
+  foreach(DXVK_PATCH_NAME dxvk-android.patch dxvk-ios.patch dxvk-armv7-support.patch dxvk-vulkan11-adaptive.patch dxvk-resource-refcount-memory-order.patch dxvk-mali-clip-distance.patch dxvk-mali-g76-robustness2-optional.patch dxvk-android-missing-fallback-extensions.patch dxvk-mali-g76-legacy-barrier-fallback.patch dxvk-mali-g76-semaphore-fn-fallback.patch dxvk-mali-g76-4444-format.patch dxvk-mali-g76-copy-commands2.patch dxvk-mali-g76-legacy-copy-fallback.patch dxvk-mali-g76-legacy-render-pass.patch dxvk-mali-g76-composite-alpha.patch dxvk-mali-g76-vertex-buffer-stride-fallback.patch dxvk-mali-g76-extended-dynamic-state.patch dxvk-mali-g76-dynamic-state-fallback.patch dxvk-mali-g76-demote-to-helper-fallback.patch dxvk-mali-g76-null-descriptor-fallback.patch dxvk-mali-g76-swapchain-blitter-legacy-renderpass.patch dxvk-mali-g76-blitter-pipeline-legacy-renderpass.patch dxvk-mali-g76-blitter-null-descriptor-fallback.patch dxvk-mali-g76-format-properties3-fallback.patch dxvk-mali-g76-hud-image-legacy-renderpass.patch dxvk-mali-g76-hud-stderr-log.patch dxvk-composite-alpha-log.patch dxvk-android-force-opaque-alpha.patch dxvk-refcount-memory-order-audit.patch dxvk-gpu-event-second-class-refcount-memory-order.patch)
     execute_process(
       COMMAND git -C "${DXVK_LOCAL_FORK_DIR}" apply --reverse --check "${CMAKE_SOURCE_DIR}/Patches/${DXVK_PATCH_NAME}"
       RESULT_VARIABLE DXVK_PATCH_ALREADY_APPLIED
@@ -682,7 +682,14 @@ elseif(ANDROID)
   else()
     set(ANDROID_API "28")
   endif()
-  message(STATUS "Building DXVK ${DXVK_VERSION} for Android arm64-v8a (API ${ANDROID_API}) with Meson (${MESON_EXECUTABLE})")
+  if(ANDROID_ABI STREQUAL "armeabi-v7a")
+    set(DXVK_MESON_CROSS_TEMPLATE "${CMAKE_SOURCE_DIR}/cmake/meson-armv7-android-cross.ini.in")
+    set(DXVK_ANDROID_CPU_LABEL "armeabi-v7a")
+  else()
+    set(DXVK_MESON_CROSS_TEMPLATE "${CMAKE_SOURCE_DIR}/cmake/meson-arm64-android-cross.ini.in")
+    set(DXVK_ANDROID_CPU_LABEL "arm64-v8a")
+  endif()
+  message(STATUS "Building DXVK ${DXVK_VERSION} for Android ${DXVK_ANDROID_CPU_LABEL} (API ${ANDROID_API}) with Meson (${MESON_EXECUTABLE})")
 
   # Generate a pkg-config file for the in-tree (FetchContent) SDL3 so meson's
   # dependency('SDL3') resolves to it — the exact same silent-SDL2-fallback trap
@@ -712,9 +719,9 @@ Cflags: -I\${includedir}
   # pkg_config_libdir property from the cross file.
   set(DXVK_PKG_CONFIG_ENV "PKG_CONFIG_LIBDIR=${DXVK_SDL3_PC_DIR}")
 
-  configure_file(${CMAKE_SOURCE_DIR}/cmake/meson-arm64-android-cross.ini.in
-                 ${CMAKE_BINARY_DIR}/meson-arm64-android-cross.ini @ONLY)
-  set(DXVK_MESON_MACHINE_ARGS --cross-file ${CMAKE_BINARY_DIR}/meson-arm64-android-cross.ini)
+  configure_file(${DXVK_MESON_CROSS_TEMPLATE}
+                 ${CMAKE_BINARY_DIR}/meson-android-cross.ini @ONLY)
+  set(DXVK_MESON_MACHINE_ARGS --cross-file ${CMAKE_BINARY_DIR}/meson-android-cross.ini)
 
   ExternalProject_Add(dxvk_android_build
     SOURCE_DIR        ${DXVK_SOURCE_DIR}

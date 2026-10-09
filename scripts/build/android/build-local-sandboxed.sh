@@ -14,8 +14,22 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO"
 
-PRESET=android-vulkan
-NDK_VERSION="27.2.12479018"
+ANDROID_ABI="${GX_ANDROID_ABI:-arm64-v8a}"
+case "${ANDROID_ABI}" in
+  arm64-v8a)
+    PRESET=android-vulkan
+    EXPECTED_ELF_MACHINE="AArch64"
+    ;;
+  armeabi-v7a)
+    PRESET=android-vulkan-armv7
+    EXPECTED_ELF_MACHINE="ARM"
+    ;;
+  *)
+    echo "ERROR: unsupported GX_ANDROID_ABI='${ANDROID_ABI}' (expected arm64-v8a or armeabi-v7a)"
+    exit 1
+    ;;
+esac
+NDK_VERSION="28.2.13676358"
 CMDLINE_TOOLS_VERSION="13114758"
 CMDLINE_TOOLS_SHA1="5fdcc763663eefb86a5b8879697aa6088b041e70"
 VCPKG_COMMIT="42e4e33e1505c9f47b58c21e0f557c1571b751ee"
@@ -123,9 +137,14 @@ mkdir -p "build/${PRESET}/_deps"
 rm -rf "build/${PRESET}/_deps/sdl3-src"
 ln -sfn "${FETCHCONTENT_SRC}/SDL3-src" "build/${PRESET}/_deps/sdl3-src"
 
-echo "=== [7/8] Build z_generals + DXVK d3d8/d3d9 + hooks ==="
-cmake --build "build/${PRESET}" --target z_generals dxvk_d3d8_install \
-  main_hook file_redirect_hook gsl_alloc_hook hook_impl -- -k 0 2>&1 | tee logs/build_android.log
+echo "=== [7/8] Build z_generals + DXVK d3d8/d3d9 (ABI ${ANDROID_ABI}) ==="
+BUILD_TARGETS=(z_generals dxvk_d3d8_install)
+# libadrenotools and its hook targets are Arm64-only; the ARMv7 path deliberately
+# excludes them and uses the system Vulkan/GLES driver instead.
+if [ "${ANDROID_ABI}" = "arm64-v8a" ]; then
+  BUILD_TARGETS+=(main_hook file_redirect_hook gsl_alloc_hook hook_impl)
+fi
+cmake --build "build/${PRESET}" --target "${BUILD_TARGETS[@]}" -- -k 0 2>&1 | tee logs/build_android.log
 ccache --show-stats
 
 echo "=== [8/8] Verify, strip, package APK ==="
@@ -133,7 +152,7 @@ READELF="$(ls "${ANDROID_NDK_HOME}"/toolchains/llvm/prebuilt/*/bin/llvm-readelf 
 GAME_LIB="build/${PRESET}/GeneralsMD/Code/Main/libmain.so"
 [ -f "$GAME_LIB" ] || { echo "libmain.so not found at $GAME_LIB"; exit 1; }
 readelf_out="$("$READELF" -h "$GAME_LIB")"
-grep -q AArch64 <<< "$readelf_out" || { echo "libmain.so is not AArch64"; exit 1; }
+grep -q "Machine:[[:space:]]*${EXPECTED_ELF_MACHINE}" <<< "$readelf_out" || { echo "libmain.so is not ${EXPECTED_ELF_MACHINE}"; exit 1; }
 for lib in libdxvk_d3d8.so libdxvk_d3d9.so; do
   [ -f "build/${PRESET}/$lib" ] || { echo "$lib missing"; exit 1; }
 done
@@ -147,7 +166,7 @@ done
 # found.
 dxvk_strings="$(strings "build/${PRESET}/libdxvk_d3d9.so")"
 grep -q "SDL3 WSI:" <<< "$dxvk_strings" || { echo "libdxvk_d3d9.so built without SDL3 WSI"; exit 1; }
-echo "Artifacts verified: AArch64 libmain.so + DXVK with SDL3 WSI"
+echo "Artifacts verified: ${EXPECTED_ELF_MACHINE} libmain.so + DXVK with SDL3 WSI (${ANDROID_ABI})"
 
 # Strip debug symbols from everything except the two DXVK libraries before
 # packaging: android/app/build.gradle deliberately keeps libdxvk_d3d8/d3d9.so
@@ -180,10 +199,11 @@ for lib in "$GAME_LIB" \
            "build/${PRESET}/_deps/adrenotools-build/src/hook/libhook_impl.so" \
            "build/${PRESET}/_deps/adrenotools-build/src/hook/libmain_hook.so" \
            "build/${PRESET}/_deps/adrenotools-build/src/hook/libfile_redirect_hook.so"; do
-  [ -f "$lib" ] && "$STRIP" --strip-unneeded "$lib"
+  if [ -f "$lib" ]; then "$STRIP" --strip-unneeded "$lib"; fi
 done
 
 export GX_ANDROID_STAGING="${REPO}/android-staging"
+export GX_ANDROID_ABI="${ANDROID_ABI}"
 # GeneralsX @feature Android port 01/08/2026 Respect a caller-provided
 # override instead of always clearing it -- lets a one-off diagnostic build
 # force a distinct versionCode/versionName so a tester can be certain a
@@ -195,10 +215,10 @@ if [ -x /opt/gradle/bin/gradle ]; then
   export PATH="/opt/gradle/bin:$PATH"
 fi
 # Fonts (docs/BUILD/ANDROID_SANDBOXED_LOCAL.md "One-off binary assets") must
-# already be staged at ${GX_ANDROID_STAGING}/fonts/*.ttf, and the default
-# Turnip driver at ${GX_ANDROID_STAGING}/default_driver/{meta.json,*.so} --
-# both are fetched from github.com release assets, which this script can't
-# reach itself.
+# already be staged at ${GX_ANDROID_STAGING}/fonts/*.ttf. The default Turnip
+# driver at ${GX_ANDROID_STAGING}/default_driver/{meta.json,*.so} is needed
+# only for arm64-v8a: adrenotools/Turnip are excluded from ARMv7. These assets
+# are fetched from GitHub release assets, which this script can't reach itself.
 # Always package from a clean Gradle build dir. AGP's incremental packager
 # can leave superseded entries physically in the zip when a library shrinks,
 # rewriting only the central directory -- the .apk then carries dead weight

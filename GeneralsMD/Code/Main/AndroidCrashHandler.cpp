@@ -56,7 +56,7 @@
 #include "GeneratedVersion.h"
 #include <elf.h>
 #include <link.h>
-#if defined(__aarch64__)
+#if defined(__aarch64__) || defined(__arm__)
 #include <ucontext.h>
 #endif
 
@@ -417,17 +417,27 @@ void androidCrashHandler(int sig, siginfo_t *info, void *ucontext) {
 		appendCrashLog(buf, (size_t)len < sizeof(buf) ? (size_t)len : sizeof(buf) - 1);
 	}
 
+#if defined(__aarch64__) || defined(__arm__)
+	uintptr_t pc = 0;
+	uintptr_t lr = 0;
+	uintptr_t fp = 0;
 #if defined(__aarch64__)
-	uintptr_t pc = (ucontext != nullptr) ? (uintptr_t)((ucontext_t *)ucontext)->uc_mcontext.pc : 0;
-	uintptr_t lr = (ucontext != nullptr) ? (uintptr_t)((ucontext_t *)ucontext)->uc_mcontext.regs[30] : 0;
-	uintptr_t fp = (ucontext != nullptr) ? (uintptr_t)((ucontext_t *)ucontext)->uc_mcontext.regs[29] : 0;
+	pc = (ucontext != nullptr) ? (uintptr_t)((ucontext_t *)ucontext)->uc_mcontext.pc : 0;
+	lr = (ucontext != nullptr) ? (uintptr_t)((ucontext_t *)ucontext)->uc_mcontext.regs[30] : 0;
+	fp = (ucontext != nullptr) ? (uintptr_t)((ucontext_t *)ucontext)->uc_mcontext.regs[29] : 0;
+#elif defined(__arm__)
+	// Android Bionic exposes ARM32 registers by name in mcontext_t.
+	pc = (ucontext != nullptr) ? (uintptr_t)((ucontext_t *)ucontext)->uc_mcontext.arm_pc : 0;
+	lr = (ucontext != nullptr) ? (uintptr_t)((ucontext_t *)ucontext)->uc_mcontext.arm_lr : 0;
+	fp = (ucontext != nullptr) ? (uintptr_t)((ucontext_t *)ucontext)->uc_mcontext.arm_fp : 0;
+#endif
 	logResolvedAddress("crash PC", pc);
 	logResolvedAddress("crash LR", lr);
 
 	if (fp != 0) {
 		uintptr_t frame = fp;
 		for (int i = 0; i < 16; ++i) {
-			if (frame == 0 || (frame & 0xF) != 0) {
+			if (frame == 0 || (frame & (sizeof(uintptr_t) - 1)) != 0) {
 				break;
 			}
 			// A corrupted fp could point anywhere; this read can itself fault.

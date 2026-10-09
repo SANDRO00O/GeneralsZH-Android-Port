@@ -55,15 +55,17 @@
 #include <string>
 #endif
 #if defined(__ANDROID__)
+// GeneralsX @build Android port render-backend picker 07/09/2026 -
+// d3d8gles_ShouldUseVulkanBackend()/d3d8gles_ShouldUseANGLE(), see UseVulkanBackend()/UseANGLE() below.
+#include "d3d8gles.h"
+#endif
+#if defined(__ANDROID__) && defined(__aarch64__)
 // GeneralsX @feature Android port 10/07/2026 Optional custom Vulkan driver
 // loading (Adreno/Turnip), see TryLoadCustomVulkanDriver() below.
 #include <jni.h>
 #include <dlfcn.h>
 #include <adrenotools/driver.h>
 #include <android/api-level.h>
-// GeneralsX @build Android port render-backend picker 07/09/2026 -
-// d3d8gles_ShouldUseVulkanBackend()/d3d8gles_ShouldUseANGLE(), see UseVulkanBackend()/UseANGLE() below.
-#include "d3d8gles.h"
 #endif
 #include <cstdlib>
 #include <cctype>
@@ -282,7 +284,7 @@ static void FilterPipeWireOpenAL()
 	#endif
 }
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) && defined(__aarch64__)
 /**
  * TryLoadCustomVulkanDriver
  *
@@ -434,7 +436,7 @@ static void TryLoadCustomVulkanDriver(const char *internalPath)
 	fprintf(stderr, "INFO: Loaded custom Vulkan driver '%s' via libadrenotools (hookLibDir=%s)\n",
 	        driverName, hookLibDir.c_str());
 }
-#endif // __ANDROID__
+#endif // __ANDROID__ && __aarch64__
 
 /**
  * CreateGameEngine
@@ -1144,7 +1146,7 @@ int main(int argc, char* argv[])
 		}
 		FilterPipeWireOpenAL();
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) && defined(__aarch64__)
 		if (useVulkan) {
 			// Must run before SDL_Vulkan_LoadLibrary()/DXVK's own internal
 			// dlopen("libvulkan.so") below -- see TryLoadCustomVulkanDriver().

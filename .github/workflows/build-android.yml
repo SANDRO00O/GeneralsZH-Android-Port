@@ -152,8 +152,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: /opt/android-sdk
-          key: android-sdk-${{ env.CMDLINE_TOOLS_VERSION }}-ndk${{ env.NDK_VERSION }}-p35-bt35
+          key: android-sdk-v2-${{ env.CMDLINE_TOOLS_VERSION }}-ndk${{ env.NDK_VERSION }}-p35-bt35
       - name: Install Android SDK (cmdline-tools + NDK + platform + build-tools)
+        id: install-android-sdk
         if: steps.cache-android-sdk.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
@@ -168,8 +169,24 @@ jobs:
           rm /tmp/cmdline-tools.zip
           SDKMANAGER=/opt/android-sdk/cmdline-tools/latest/bin/sdkmanager
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" --install "ndk;${{ env.NDK_VERSION }}" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+          # sdkmanager can receive a truncated NDK archive ("ZipFile unknown archive").
+          # Retry the install and clear SDK-manager temporary/download state, so a corrupt
+          # archive is not reused. Already installed packages are safe to keep between attempts.
+          installed=0
+          for attempt in 1 2 3; do
+            if "$SDKMANAGER" --install "ndk;${{ env.NDK_VERSION }}" "platforms;android-35" "build-tools;35.0.0" "platform-tools"; then
+              installed=1
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::Android SDK package install failed on attempt $attempt/3; retrying."
+              rm -rf "$HOME/.android/cache" /opt/android-sdk/.temp "/opt/android-sdk/ndk/${{ env.NDK_VERSION }}"
+              sleep $((attempt * 10))
+            fi
+          done
+          [ "$installed" = "1" ] || { echo "::error::Android SDK packages failed to install after 3 attempts"; exit 1; }
       - name: Export Android SDK environment
+        id: export-android-sdk
         run: |
           set -euo pipefail
           echo "ANDROID_HOME=/opt/android-sdk" >> "$GITHUB_ENV"
@@ -658,11 +675,11 @@ jobs:
       # why plain actions/cache can't do this). Guard each save so a run that
       # restored an exact-key hit doesn't fail trying to re-save it.
       - name: Save Android SDK cache
-        if: always() && steps.cache-android-sdk.outputs.cache-hit != 'true'
+        if: always() && steps.cache-android-sdk.outputs.cache-hit != 'true' && steps.install-android-sdk.outcome == 'success' && steps.export-android-sdk.outcome == 'success'
         uses: actions/cache/save@v5
         with:
           path: /opt/android-sdk
-          key: android-sdk-${{ env.CMDLINE_TOOLS_VERSION }}-ndk${{ env.NDK_VERSION }}-p35-bt35
+          key: android-sdk-v2-${{ env.CMDLINE_TOOLS_VERSION }}-ndk${{ env.NDK_VERSION }}-p35-bt35
 
       - name: Save vcpkg cache
         if: always() && steps.cache-vcpkg.outputs.cache-hit != 'true'
